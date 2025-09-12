@@ -1,152 +1,235 @@
-import tkinter as tk
-import random
-import os
-import ctypes
-import winsound
+import pygame, random, os
 
 # Constants
 WIDTH, HEIGHT = 400, 600
-PLAYER_WIDTH, PLAYER_HEIGHT = 40, 40
-PLATFORM_WIDTH, PLATFORM_HEIGHT = 60, 10
-GRAVITY = 0.6
-JUMP_VELOCITY = -1009999
-MOVE_SPEED = 5
-NUM_PLATFORMS = 6
+PLAYER_W, PLAYER_H = 40, 40
+PLATFORM_W, PLATFORM_H = 60, 10
+GRAVITY = .6
+JUMP_VEL = -20
+MOVE_SPEED = 4
+NUM_PLATFORMS = 8
 
-# Asset directory
-ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
+# Asset paths
+ASSETS = os.path.join(os.path.dirname(__file__), "assets")
+bg_img = pygame.image.load(os.path.join(ASSETS, "background.png"))
+plat_img = pygame.image.load(os.path.join(ASSETS, "platform.png"))
+spider_img = pygame.image.load(os.path.join(ASSETS, "spider.png"))
+spider_flip = pygame.image.load(os.path.join(ASSETS, "spider_flipped.png"))
 
-# Loop background music (Windows only)
-background_path = os.path.join(ASSET_DIR, "background.mp3")
-ctypes.windll.winmm.mciSendStringW(f'open "{background_path}" type mpegvideo alias bgm', None, 0, None)
-ctypes.windll.winmm.mciSendStringW("play bgm repeat", None, 0, None)
+# Player sprites
+player_left = pygame.image.load(os.path.join(ASSETS, "player.png"))
+player_right = pygame.image.load(os.path.join(ASSETS, "player_flipped.png"))
+player_jump_left = pygame.image.load(os.path.join(ASSETS, "player_jump_flipped.png"))
+player_jump_right = pygame.image.load(os.path.join(ASSETS, "player_jump.png"))
+player_fall_left = pygame.image.load(os.path.join(ASSETS, "player_fall_flipped.png"))
+player_fall_right = pygame.image.load(os.path.join(ASSETS, "player_fall.png"))
 
-# Setup
-root = tk.Tk()
-root.title("Endless Jumper")
-canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT)
-canvas.pack()
+# Menu and death screens
+start_menu_img = pygame.image.load(os.path.join(ASSETS, "start_menu.png"))
+death_screens = [pygame.image.load(os.path.join(ASSETS, f"gameover{i}.png")) for i in range(1, 13)]
 
-# Load images
-background_img = tk.PhotoImage(file=os.path.join(ASSET_DIR, "background.png"))
-player_img = tk.PhotoImage(file=os.path.join(ASSET_DIR, "player.png"))
-platform_img = tk.PhotoImage(file=os.path.join(ASSET_DIR, "platform.png"))
+# Sound setup
+pygame.init()
+pygame.mixer.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+clock = pygame.time.Clock()
+font = pygame.font.SysFont("Arial", 16)
 
-# Draw background
-canvas.create_image(0, 0, anchor="nw", image=background_img)
+pygame.mixer.music.load(os.path.join(ASSETS, "background.mp3"))
+pygame.mixer.music.play(-1)
 
-# Score setup
+jump_sfx = pygame.mixer.Sound(os.path.join(ASSETS, "jump.wav"))
+hurt_sfx = pygame.mixer.Sound(os.path.join(ASSETS, "hurt.wav"))
+die_sfx = pygame.mixer.Sound(os.path.join(ASSETS, "die.wav"))
+
 score = 0
-score_text = canvas.create_text(10, 10, anchor="nw", font=("Arial", 16), fill="black", text=f"Score: {score}")
+game_active = False
+game_over = False
+start_menu_shown = False
+current_death_screen = None
 
-class Platform:
-    def __init__(self, canvas, x, y):
-        self.canvas = canvas
-        self.id = canvas.create_image(x + PLATFORM_WIDTH // 2, y + PLATFORM_HEIGHT // 2,
-                                      anchor="center", image=platform_img)
+class Spider:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, PLATFORM_W, PLATFORM_H)
+        self.images = [spider_img, spider_flip]
+        self.current = 0
+        self.last_switch = pygame.time.get_ticks()
+        self.interval = random.randint(3000, 5000)
 
-    def coords(self):
-        return self.canvas.coords(self.id)
+    def draw(self):
+        screen.blit(self.images[self.current], self.rect.topleft)
+
+    def update(self):
+        now = pygame.time.get_ticks()
+        if now - self.last_switch > self.interval:
+            self.current ^= 1
+            self.last_switch = now
+            self.interval = random.randint(3000, 5000)
 
     def move(self, dy):
-        self.canvas.move(self.id, 0, dy)
+        self.rect.y += dy
 
-    def recycle_if_needed(self):
-        x, y = self.coords()
-        if y > HEIGHT:
-            new_x = random.randint(0, WIDTH - PLATFORM_WIDTH)
-            new_y = random.randint(-50, 0)
-            self.canvas.coords(self.id, new_x + PLATFORM_WIDTH // 2, new_y + PLATFORM_HEIGHT // 2)
+    def reposition_above(self, platform):
+        self.rect.topleft = (platform.draw_rect.x, platform.draw_rect.y - PLATFORM_H)
+
+class Platform:
+    def __init__(self, x, y, has_spider=True):
+        self.draw_rect = pygame.Rect(x, y, PLATFORM_W, PLATFORM_H)
+        self.rect = pygame.Rect(x + 10, y + PLATFORM_H // 2, PLATFORM_W - 20, 4)
+        self.spider = Spider(x, y - PLATFORM_H) if has_spider else None
+
+    def draw(self):
+        screen.blit(plat_img, self.draw_rect.topleft)
+        if self.spider:
+            self.spider.update()
+            self.spider.draw()
+
+    def move(self, dy):
+        self.draw_rect.y += dy
+        self.rect.y += dy
+        if self.spider:
+            self.spider.move(dy)
+
+    def recycle(self):
+        new_x = random.randint(0, WIDTH - PLATFORM_W)
+        new_y = random.randint(-120, -40)
+        self.draw_rect.topleft = (new_x, new_y)
+        self.rect.topleft = (new_x + 10, new_y + PLATFORM_H // 4)
+        if random.random() < 0.08:
+            if not self.spider:
+                self.spider = Spider(new_x, new_y - PLATFORM_H)
+            else:
+                self.spider.reposition_above(self)
+        else:
+            self.spider = None
 
 class Player:
-    def __init__(self, canvas):
-        self.canvas = canvas
-        self.id = canvas.create_image(WIDTH // 2, HEIGHT - 80, anchor="center", image=player_img)
-        self.vy = 0
+    def __init__(self):
+        self.rect = pygame.Rect(WIDTH//2, HEIGHT-80, PLAYER_W, PLAYER_H)
         self.vx = 0
+        self.vy = 0
         self.on_ground = False
+        self.disabled = False
+        self.facing_right = True
+        self.image = player_right
 
     def move(self):
-        global score
+        global score, game_active, game_over, current_death_screen
         self.vy += GRAVITY
-        self.canvas.move(self.id, self.vx, self.vy)
-        x, y = self.canvas.coords(self.id)
-        x1, y1 = x - PLAYER_WIDTH // 2, y - PLAYER_HEIGHT // 2
-        x2, y2 = x + PLAYER_WIDTH // 2, y + PLAYER_HEIGHT // 2
+        self.rect.x += self.vx
+        self.rect.y += self.vy
 
-        self.on_ground = False
         for plat in platforms:
-            px, py = plat.coords()
-            px1 = px - PLATFORM_WIDTH // 2
-            px2 = px + PLATFORM_WIDTH // 2
-            py1 = py - PLATFORM_HEIGHT // 2
-            py2 = py + PLATFORM_HEIGHT // 2
-            if x2 > px1 and x1 < px2 and abs(y2 - py1) <= 5 and self.vy >= 0:
-                self.canvas.move(self.id, 0, py1 - y2)
-                self.vy = 0
-                self.on_ground = True
+            if plat.spider and self.rect.colliderect(plat.spider.rect):
+                hurt_sfx.play()
+                self.vy = max(0, self.vy)
+                self.disabled = True
 
-        if y1 < HEIGHT // 3:
-            dy = HEIGHT // 3 - y1
-            self.canvas.move(self.id, 0, dy)
+        if not self.disabled:
+            self.on_ground = False
+            for plat in platforms:
+                if self.rect.colliderect(plat.rect) and self.vy >= 0:
+                    self.rect.bottom = plat.rect.top
+                    self.vy = 0
+                    self.on_ground = True
+
+        if self.rect.top < HEIGHT//3:
+            dy = HEIGHT//3 - self.rect.top
+            self.rect.top += dy
             for plat in platforms:
                 plat.move(dy)
-                plat.recycle_if_needed()
+                if plat.draw_rect.top > HEIGHT:
+                    plat.recycle()
             score += int(dy)
-            canvas.itemconfig(score_text, text=f"Score: {score}")
 
-        if y2 > HEIGHT:
-            self.reset()
+        if self.rect.bottom > HEIGHT:
+            die_sfx.play()
+            game_active = False
+            game_over = True
+            score = 0
+            current_death_screen = random.choice(death_screens)
 
-    def reset(self):
-        global score
-        self.canvas.coords(self.id, WIDTH // 2, HEIGHT - 80)
-        self.vy = 0
-        score = 0
-        canvas.itemconfig(score_text, text=f"Score: {score}")
-        platforms[0].canvas.coords(platforms[0].id,
-                                   WIDTH // 2, HEIGHT - 55)
-        for plat in platforms[1:]:
-            plat.recycle_if_needed()
+        self.update_image()
 
     def jump(self):
         if self.on_ground:
-            self.vy = JUMP_VELOCITY
-            winsound.PlaySound(os.path.join(ASSET_DIR, "jump.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            self.vy = JUMP_VEL
+            jump_sfx.play()
 
-    def set_direction(self, direction):
-        self.vx = direction * MOVE_SPEED
+    def set_dir(self, d):
+        self.vx = d * MOVE_SPEED
+        if d != 0:
+            self.facing_right = d > 0
 
-def update():
+    def update_image(self):
+        if self.vy < -1:
+            self.image = player_jump_right if self.facing_right else player_jump_left
+        elif self.vy > 1:
+            self.image = player_fall_right if self.facing_right else player_fall_left
+        else:
+            self.image = player_right if self.facing_right else player_left
+
+def generate():
+    plats = []
+    spacing = HEIGHT // NUM_PLATFORMS
+    for i in range(NUM_PLATFORMS):
+        x = random.randint(0, WIDTH - PLATFORM_W)
+        y = HEIGHT - (i + 1) * spacing
+        has_spider = i != 0 and random.random() < 0.08
+        plat = Platform(x, y, has_spider)
+        plats.append(plat)
+        if i == 0:
+            player.rect.midbottom = plat.rect.midtop
+    return plats
+
+player = Player()
+platforms = generate()
+
+running = True
+while running:
+    if not start_menu_shown:
+        screen.blit(start_menu_img, (0, 0))
+        pygame.display.flip()
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT: running = False
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_s:
+                game_active = True
+                start_menu_shown = True
+                player = Player()
+                platforms = generate()
+        continue
+
+    if not game_active:
+        if game_over and current_death_screen:
+            screen.blit(current_death_screen, (0, 0))
+        else:
+            screen.blit(start_menu_img, (0, 0))
+        pygame.display.flip()
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT: running = False
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_s:
+                game_active = True
+                game_over = False
+                player = Player()
+                platforms = generate()
+        continue
+
+    screen.blit(bg_img, (0, 0))
+    for e in pygame.event.get():
+        if e.type == pygame.QUIT: running = False
+        elif e.type == pygame.KEYDOWN:
+            if e.key == pygame.K_w: player.jump()
+            elif e.key == pygame.K_a: player.set_dir(-1)
+            elif e.key == pygame.K_d: player.set_dir(1)
+        elif e.type == pygame.KEYUP:
+            if e.key in [pygame.K_a, pygame.K_d]: player.set_dir(0)
+
     player.move()
-    root.after(20, update)
+    for plat in platforms: plat.draw()
+    screen.blit(player.image, player.rect.topleft)
+    screen.blit(font.render(f"Score: {score}", True, (0,0,0)), (10,10))
 
-def key_press(event):
-    if event.keysym.lower() == 'w':
-        player.jump()
-    elif event.keysym.lower() == 'a':
-        player.set_direction(-1)
-    elif event.keysym.lower() == 'd':
-        player.set_direction(1)
+    pygame.display.flip()
+    clock.tick(50)
 
-def key_release(event):
-    if event.keysym.lower() in ['a', 'd']:
-        player.set_direction(0)
-
-def generate_platforms(canvas, count):
-    platforms = []
-    platforms.append(Platform(canvas, WIDTH // 2 - PLATFORM_WIDTH // 2, HEIGHT - 60))
-    for _ in range(count - 1):
-        x = random.randint(0, WIDTH - PLATFORM_WIDTH)
-        y = random.randint(50, HEIGHT - 150)
-        platforms.append(Platform(canvas, x, y))
-    return platforms
-
-platforms = generate_platforms(canvas, NUM_PLATFORMS)
-player = Player(canvas)
-
-root.bind("<KeyPress>", key_press)
-root.bind("<KeyRelease>", key_release)
-
-update()
-root.mainloop()
+pygame.quit()
