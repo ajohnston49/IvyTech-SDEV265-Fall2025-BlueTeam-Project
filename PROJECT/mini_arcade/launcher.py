@@ -1,6 +1,8 @@
 import tkinter as tk
 import subprocess
+import threading
 import os
+import sys
 
 # Base paths
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -9,36 +11,43 @@ ASSETS_DIR = os.path.join(BASE_DIR, "gui_assets")
 # Prevent garbage collection
 images = []
 
-# Launch function
-def launch_game(path, use_pgzrun=False):
-    abs_path = os.path.abspath(path)
-    print(f"Launching: {abs_path}")
-    if os.path.exists(abs_path):
-        root.iconify()  # Minimize GUI
-        try:
-            if use_pgzrun:
-                proc = subprocess.Popen(
-                    ["python", "-m", "pgzrun", abs_path],
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
-                )
-            else:
-                proc = subprocess.Popen(["python", abs_path])
-            proc.wait()  # Wait for game to close
-        except Exception as e:
-            print(f"Error launching game: {e}")
-        root.deiconify()  # Restore GUI
-    else:
-        print(f"Game not found: {abs_path}")
-
 # GUI setup
 root = tk.Tk()
 root.title("BitBox Arcade")
-root.geometry("1000x700")
+root.geometry("1000x700")  # Fixed window size
 root.configure(bg="#1e1e1e")
 
-tk.Label(root, text="BitBox Arcade", font=("Arial", 32, "bold"), fg="white", bg="#1e1e1e").pack(pady=20)
+# Main grid frame
 grid = tk.Frame(root, bg="#1e1e1e")
 grid.pack()
+
+# Launch function
+def launch_game(path):
+    abs_path = os.path.abspath(path)
+    print(f"Launching: {abs_path}")
+    if not os.path.exists(abs_path):
+        print(f"Game not found: {abs_path}")
+        return
+
+    def run_game():
+        try:
+            root.iconify()  # Minimize launcher
+            proc = subprocess.Popen([sys.executable, abs_path])
+            proc.wait()      # Wait for game to close
+        except Exception as e:
+            print(f"Error launching game: {e}")
+        finally:
+            root.deiconify()               # Restore launcher
+            root.geometry("1000x700")      # Reset to original size
+            root.lift()                    # Raise above other windows
+            root.focus_force()             # Grab focus
+            root.attributes("-topmost", True)
+            root.after(500, lambda: root.attributes("-topmost", False))  # Reset topmost
+
+    threading.Thread(target=run_game, daemon=True).start()
+
+# Arcade title
+tk.Label(root, text="BitBox Arcade", font=("Arial", 32, "bold"), fg="white", bg="#1e1e1e").pack(pady=20)
 
 # Froggy Jump
 frog_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "frog_button.png"))
@@ -60,13 +69,13 @@ tk.Button(mak_frame, image=mak_img, width=150, height=200,
           borderwidth=0, bg="#1e1e1e").pack()
 tk.Label(mak_frame, text="Makayla's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
-# Craig's Game (Duck Hunt via pgzrun)
-craig_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "placeholder.png"))
+# Craig's Game (Duck Hunt)
+craig_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "duck_button.png"))
 images.append(craig_img)
 craig_frame = tk.Frame(grid, bg="#1e1e1e")
 craig_frame.grid(row=1, column=0, padx=40, pady=20)
 tk.Button(craig_frame, image=craig_img, width=150, height=200,
-          command=lambda: launch_game(os.path.join(BASE_DIR, "Craig", "duckhunt", "shoot.py"), use_pgzrun=True),
+          command=lambda: launch_game(os.path.join(BASE_DIR, "Craig", "duckhunt", "shoot.py")),
           borderwidth=0, bg="#1e1e1e").pack()
 tk.Label(craig_frame, text="Duck Hunt", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
