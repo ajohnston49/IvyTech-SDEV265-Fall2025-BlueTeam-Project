@@ -10,11 +10,23 @@ ASSETS_DIR = os.path.join(BASE_DIR, "gui_assets")
 images = []
 
 # Launch function
-def launch_game(path):
+def launch_game(path, use_pgzrun=False):
     abs_path = os.path.abspath(path)
     print(f"Launching: {abs_path}")
     if os.path.exists(abs_path):
-        subprocess.Popen(["python", abs_path])
+        root.iconify()  # Minimize GUI
+        try:
+            if use_pgzrun:
+                proc = subprocess.Popen(
+                    ["python", "-m", "pgzrun", abs_path],
+                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                )
+            else:
+                proc = subprocess.Popen(["python", abs_path])
+            proc.wait()  # Wait for game to close
+        except Exception as e:
+            print(f"Error launching game: {e}")
+        root.deiconify()  # Restore GUI
     else:
         print(f"Game not found: {abs_path}")
 
@@ -48,15 +60,15 @@ tk.Button(mak_frame, image=mak_img, width=150, height=200,
           borderwidth=0, bg="#1e1e1e").pack()
 tk.Label(mak_frame, text="Makayla's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
-# Craig's Game
+# Craig's Game (Duck Hunt via pgzrun)
 craig_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "placeholder.png"))
 images.append(craig_img)
 craig_frame = tk.Frame(grid, bg="#1e1e1e")
 craig_frame.grid(row=1, column=0, padx=40, pady=20)
 tk.Button(craig_frame, image=craig_img, width=150, height=200,
-          command=lambda: launch_game(os.path.join(BASE_DIR, "Craig", "pixel_racer", "main.py")),
+          command=lambda: launch_game(os.path.join(BASE_DIR, "Craig", "duckhunt", "shoot.py"), use_pgzrun=True),
           borderwidth=0, bg="#1e1e1e").pack()
-tk.Label(craig_frame, text="Craig's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
+tk.Label(craig_frame, text="Duck Hunt", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Brandon's Game
 brandon_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "placeholder.png"))
