@@ -14,12 +14,8 @@ images = []
 # GUI setup
 root = tk.Tk()
 root.title("BitBox Arcade")
-root.geometry("1000x700")  # Fixed window size
+root.geometry("1000x700")
 root.configure(bg="#1e1e1e")
-
-# Main grid frame
-grid = tk.Frame(root, bg="#1e1e1e")
-grid.pack()
 
 # Launch function
 def launch_game(path):
@@ -31,20 +27,54 @@ def launch_game(path):
 
     def run_game():
         try:
-            root.iconify()  # Minimize launcher
+            root.iconify()
             proc = subprocess.Popen([sys.executable, abs_path])
-            proc.wait()      # Wait for game to close
+            proc.wait()
         except Exception as e:
             print(f"Error launching game: {e}")
         finally:
-            root.deiconify()               # Restore launcher
-            root.geometry("1000x700")      # Reset to original size
-            root.lift()                    # Raise above other windows
-            root.focus_force()             # Grab focus
+            root.deiconify()
+            root.geometry("1000x700")
+            root.lift()
+            root.focus_force()
             root.attributes("-topmost", True)
-            root.after(500, lambda: root.attributes("-topmost", False))  # Reset topmost
+            root.after(500, lambda: root.attributes("-topmost", False))
 
     threading.Thread(target=run_game, daemon=True).start()
+
+# About window
+def open_about_window():
+    about = tk.Toplevel(root)
+    about.title("About BitBox Arcade")
+    about.geometry("500x400")
+    about.configure(bg="#2e2e2e")
+
+    message = (
+        "This application was developed by the Blue Team\n"
+        "Ivy Tech Community College – Fall 2025\n"
+        "Course: SDEV 265\n\n"
+        "Developers:\n"
+        "• Makayla Harrison\n"
+        "• Craig Andrew Hutson\n"
+        "• Alex Michael Johnston\n"
+        "• Brandon Kesner"
+    )
+
+    tk.Label(about, text=message, font=("Arial", 12), fg="white", bg="#2e2e2e", justify="center").pack(pady=40)
+    tk.Button(about, text="Close", command=about.destroy, font=("Arial", 12),
+              bg="#444", fg="white", activebackground="#666", activeforeground="white").pack(pady=20)
+
+# Side panel for About button
+side_panel = tk.Frame(root, bg="#1e1e1e")
+side_panel.pack(side="left", fill="y", padx=(20, 0), pady=20)
+
+tk.Button(side_panel, text="About Game", command=open_about_window,
+          font=("Arial", 12), width=12, height=2,
+          bg="#444", fg="white", activebackground="#666", activeforeground="white").pack(pady=10)
+
+# Main grid for game buttons
+grid = tk.Frame(root, bg="#1e1e1e")
+grid.pack()
 
 # Arcade title
 tk.Label(root, text="BitBox Arcade", font=("Arial", 32, "bold"), fg="white", bg="#1e1e1e").pack(pady=20)
@@ -69,7 +99,7 @@ tk.Button(mak_frame, image=mak_img, width=150, height=200,
           borderwidth=0, bg="#1e1e1e").pack()
 tk.Label(mak_frame, text="Makayla's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
-# Craig's Game (Duck Hunt)
+# Craig's Game
 craig_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "duck_button.png"))
 images.append(craig_img)
 craig_frame = tk.Frame(grid, bg="#1e1e1e")
