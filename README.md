@@ -12,7 +12,10 @@ Requirements
 
 •	Pygame Used for all game rendering and logic. Install via pip.
 
+•	Pillow — Used for image handling in Makayla’s game
+
 •	Visual Studio Code (VS Code) This project was built and tested in VS Code. While other IDEs may work, VS Code is recommended for best compatibility.
+
 
 
 Installation Steps
@@ -30,8 +33,10 @@ Installation Steps
       Make sure PIP is installed, then run:
 
             pip install pygame
+  			pip install pygame pillow
+
   	
-4.	Open in VS Code
+5.	Open in VS Code
 
   	o	Launch VS Code.
   	
@@ -41,7 +46,7 @@ Installation Steps
 
   	o	Ensure your Python interpreter is set to Python 3.11.
 
-5.	Run the Launcher
+6.	Run the Launcher
 
   	o	In VS Code, open Launcher.py.
   	
