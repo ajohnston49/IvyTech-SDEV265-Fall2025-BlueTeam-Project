@@ -226,6 +226,12 @@ decorations = {
 score = 0
 score_text = canvas.create_text(10, 10, anchor="nw", font=("Arial", 16), fill="white", text=f"Height: {score}")
 
+def restart_game():
+    canvas.delete("all")
+    game.player = None  # Force player to be recreated
+    game.load_level(game.current_level_index)
+
+
 class Player:
     def __init__(self, canvas, x, y):
         self.canvas = canvas
@@ -237,160 +243,79 @@ class Player:
         self.moving = False
         self.current_frame = 0
         self.frame_counter = 0
-        self.animation_speed = 8  # Frames to wait before updating sprite
-        self.state = 'idle'  # idle, run, attack1, attack2, guard
-        self.animation_lock = False  # Lock movement during attacks
-        self.current_platform = None  # Track which platform player is on
-        self.health = 3  # Player starts with 3 lives
-        self.invulnerable = False  # Invulnerability after taking damage
+        self.animation_speed = 8
+        self.state = 'idle'
+        self.animation_lock = False
+        self.current_platform = None
+        self.health = 3
+        self.invulnerable = False
         self.invulnerable_timer = 0
         self.id = canvas.create_image(x, y, anchor="center", image=player_idle_frames[0])
 
     def take_damage(self):
-        """Player takes damage from enemy collision"""
         if not self.invulnerable and self.health > 0:
             self.health -= 1
             self.invulnerable = True
-            self.invulnerable_timer = 60  # 1 second invulnerability at 60 FPS
-            return self.health <= 0  # Return True if player died
+            self.invulnerable_timer = 60
+
+            if self.health <= 0:
+                self.handle_player_death()
+                return True
         return False
 
+    def handle_player_death(self):
+        self.canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
+        retry_button = tk.Button(self.canvas.master, text="Retry", font=("Arial", 16), command=restart_game)
+        self.canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
+
     def update(self, platforms):
-        # Only allow movement if not locked in attack/guard animation
         if not self.animation_lock:
             intended_x = self.x + self.vx
             intended_y = self.y + self.vy
+            buffer = 4
+
+            def is_colliding_with_solid(x, y, solids):
+                for obj in solids:
+                    if abs(x - obj['x']) < obj['width'] // 2 and abs(y - obj['y']) < obj['height'] // 2:
+                        return True
+                return False
+
+            if self.current_platform and is_colliding_with_solid(intended_x, intended_y, self.current_platform.solid_objects):
+                self.vx = 0
+                self.vy = 0
+                intended_x = self.x
+                intended_y = self.y
 
             if self.current_platform and self.current_platform.tile_map:
-                current_tile = self.current_platform.get_tile_at_position(self.x, self.y)
-                # Inset for edge clamping
-                inset = 0  # clamp exactly to tile edge
-
-                def clamp_to_tile(tile_data, x, y):
-                    """Clamp position to tile boundaries with optional insets."""
-                    min_x = tile_data['left']
-                    max_x = tile_data['right']
-                    min_y = tile_data['top']
-                    max_y = tile_data['bottom']
-
-                    if not tile_data.get('allow_left', True):
-                        min_x += inset
-                    if not tile_data.get('allow_right', True):
-                        max_x -= inset
-                    if not tile_data.get('allow_up', True):
-                        min_y += inset
-                    if not tile_data.get('allow_down', True):
-                        max_y -= inset
-
-                    return (
-                        max(min_x, min(x, max_x)),
-                        max(min_y, min(y, max_y))
-                    )
-
-                if current_tile:
-                    curr_col, curr_row, curr_tile_data = current_tile
-                    next_tile = self.current_platform.get_tile_at_position(intended_x, intended_y)
-                    if next_tile:
-                        next_col, next_row, next_tile_data = next_tile
-                        if (next_col, next_row) != (curr_col, curr_row):
-                            # Determine if movement is allowed
-                            can_move = False
-                            if next_col < curr_col and next_row == curr_row:
-                                can_move = curr_tile_data.get('allow_left', True)
-                            elif next_col > curr_col and next_row == curr_row:
-                                can_move = curr_tile_data.get('allow_right', True)
-                            elif next_row < curr_row and next_col == curr_col:
-                                can_move = curr_tile_data.get('allow_up', True)
-                            elif next_row > curr_row and next_col == curr_col:
-                                can_move = curr_tile_data.get('allow_down', True)
-
-                            if can_move:
-                                # Handle ramps
-                                if next_tile_data.get('is_ramp'):
-                                    ramp_dir = next_tile_data.get('ramp_direction')
-                                    if 'top' in next_tile_data['tile_type']:
-                                        if ramp_dir == 'left' and (next_col - 1, next_row - 1) in self.current_platform.tile_map:
-                                            new_tile_data = self.current_platform.tile_map[(next_col - 1, next_row - 1)]
-                                            self.x, self.y = new_tile_data['center_x'], new_tile_data['center_y']
-                                        elif ramp_dir == 'right' and (next_col + 1, next_row - 1) in self.current_platform.tile_map:
-                                            new_tile_data = self.current_platform.tile_map[(next_col + 1, next_row - 1)]
-                                            self.x, self.y = new_tile_data['center_x'], new_tile_data['center_y']
-                                        else:
-                                            self.x, self.y = intended_x, intended_y
-                                    else:
-                                        self.x, self.y = intended_x, intended_y
-                                else:
-                                    self.x, self.y = intended_x, intended_y
-                            else:
-                                # Blocked: clamp and zero velocity if needed
-                                new_x, new_y = clamp_to_tile(curr_tile_data, intended_x, intended_y)
-                                if new_x != intended_x:
-                                    self.vx = 0
-                                if new_y != intended_y:
-                                    self.vy = 0
-                                self.x, self.y = new_x, new_y
-                        else:
-                            # Same tile: free movement
-                            self.x, self.y = intended_x, intended_y
-                    else:
-                        # Off platform: clamp and zero velocity if needed
-                        new_x, new_y = clamp_to_tile(curr_tile_data, intended_x, intended_y)
-                        if new_x != intended_x:
-                            self.vx = 0
-                        if new_y != intended_y:
-                            self.vy = 0
-                        self.x, self.y = new_x, new_y
+                next_tile = self.current_platform.get_tile_at_position(intended_x, intended_y)
+                if next_tile:
+                    self.x = intended_x
+                    self.y = intended_y
                 else:
-                    # Not on a valid tile: clamp to nearest valid tile
-                    # Find the closest tile in the platform
-                    min_dist = float('inf')
-                    nearest_tile = None
-                    px, py = self.x, self.y
-                    for tile_data in self.current_platform.tile_map.values():
-                        cx, cy = tile_data['center_x'], tile_data['center_y']
-                        dist = (px - cx) ** 2 + (py - cy) ** 2
-                        if dist < min_dist:
-                            min_dist = dist
-                            nearest_tile = tile_data
-                    if nearest_tile:
-                        clamped_x, clamped_y = clamp_to_tile(nearest_tile, intended_x, intended_y)
-                        self.x, self.y = clamped_x, clamped_y
+                    if abs(self.vx) < buffer and abs(self.vy) < buffer:
+                        self.x = intended_x
+                        self.y = intended_y
+                    else:
                         self.vx = 0
                         self.vy = 0
             else:
-                # No platform: constrain to screen bounds
-                if 0 <= intended_x <= WIDTH:
-                    self.x = intended_x
-                else:
-                    self.vx = 0
-                if 0 <= intended_y <= HEIGHT:
-                    self.y = intended_y
-                else:
-                    self.vy = 0
+                self.x = max(0, min(intended_x, WIDTH))
+                self.y = max(0, min(intended_y, HEIGHT))
 
-        # Update invulnerability timer
         if self.invulnerable:
             self.invulnerable_timer -= 1
             if self.invulnerable_timer <= 0:
                 self.invulnerable = False
 
-        # Update sprite and canvas
         self.update_sprite()
         self.canvas.coords(self.id, self.x, self.y)
-
-
 
     def update_sprite(self):
         is_moving = self.vx != 0 or self.vy != 0
 
-        # Determine state based on movement (if not locked in action)
         if not self.animation_lock:
-            if is_moving:
-                self.state = 'run'
-            else:
-                self.state = 'idle'
+            self.state = 'run' if is_moving else 'idle'
 
-        # Get animation frames based on state
         if self.state == 'idle':
             frames = player_idle_frames if self.facing_right else player_idle_frames_left
             max_frames = 6
@@ -410,20 +335,16 @@ class Player:
             frames = player_idle_frames if self.facing_right else player_idle_frames_left
             max_frames = 6
 
-        # Update animation frame
         self.frame_counter += 1
-        # Use slower animation for attacks to match swing duration
         speed = 10 if self.state in ['attack1', 'attack2'] else self.animation_speed
         if self.frame_counter >= speed:
             self.frame_counter = 0
             self.current_frame = (self.current_frame + 1) % max_frames
 
-            # Unlock animation after attack/guard completes one cycle
             if self.animation_lock and self.current_frame == 0:
                 self.animation_lock = False
                 self.state = 'idle'
 
-        # Update sprite
         self.canvas.itemconfig(self.id, image=frames[self.current_frame])
 
     def set_velocity(self, vx, vy):
@@ -435,7 +356,6 @@ class Player:
             self.facing_right = False
 
     def set_platform(self, platform):
-        """Set the platform the player is currently on"""
         self.current_platform = platform
 
     def attack1(self):
@@ -444,7 +364,7 @@ class Player:
             self.animation_lock = True
             self.current_frame = 0
             self.frame_counter = 0
-            return True  # Attack started
+            return True
         return False
 
     def attack2(self):
@@ -461,6 +381,7 @@ class Player:
             self.current_frame = 0
             self.frame_counter = 0
 
+
 class Platform:
     def __init__(self, canvas, x, y, width, height, terrain_color=None, terrain_layout=None):
         """Create a rectangular contained platform"""
@@ -470,6 +391,7 @@ class Platform:
         self.rect_width = width
         self.rect_height = height
         self.tiles = []
+        self.solid_objects = []  # Track solid decorations like trees
         self.decorations = []
         self.water_tiles = []
         self.terrain_layout = terrain_layout
@@ -794,21 +716,30 @@ class Platform:
             self.canvas.itemconfig(water_id, image=water_animations[water_type][frame_index])
 
     def add_trees_at_edges(self):
-        """Add trees at specific locations away from the platform center"""
-        # Get platform edges
+    
+    # Get platform edges
         left_x = self.rect_x + TILE_SIZE * 2
         right_x = self.rect_x + self.rect_width - TILE_SIZE * 2
         top_y = self.rect_y + TILE_SIZE // 2
 
-        # Place trees at corners/edges
         # Top-left: tree1
         self.add_decoration(left_x, top_y, 'tree1')
+        self.solid_objects.append({'x': left_x, 'y': top_y, 'width': 64, 'height': 96})
+
         # Top-right: tree2
         self.add_decoration(right_x, top_y, 'tree2')
+        self.solid_objects.append({'x': right_x, 'y': top_y, 'width': 64, 'height': 122})
+
         # Mid-left: tree3
-        self.add_decoration(self.rect_x + TILE_SIZE * 4, top_y, 'tree3')
+        mid_left_x = self.rect_x + TILE_SIZE * 4
+        self.add_decoration(mid_left_x, top_y, 'tree3')
+        self.solid_objects.append({'x': mid_left_x, 'y': top_y, 'width': 64, 'height': 84})
+
         # Mid-right: tree4
-        self.add_decoration(self.rect_x + self.rect_width - TILE_SIZE * 4, top_y, 'tree4')
+        mid_right_x = self.rect_x + self.rect_width - TILE_SIZE * 4
+        self.add_decoration(mid_right_x, top_y, 'tree4')
+        self.solid_objects.append({'x': mid_right_x, 'y': top_y, 'width': 64, 'height': 64})
+
 
     def move(self, dy):
         """Move the platform vertically for scrolling"""
@@ -831,53 +762,46 @@ class Game:
         self.score = 0
         self.water_frame = 0
         self.water_frame_counter = 0
-        self.water_animation_speed = 8  # Change frame every 8 game ticks (slower)
+        self.water_animation_speed = 8
 
-        # Level system
         self.current_level_index = 0
         self.level_name_text = None
         self.enemies = []
+        self.player = None
+        self.game_over = False
 
-        # Health display - show 3 hearts at top right
+        self.keys = {'w': False, 'a': False, 's': False, 'd': False}
+        self.action_keys = {'j': False, 'k': False, 'l': False}
+
         self.heart_sprites = []
         for i in range(3):
             heart = canvas.create_image(WIDTH - 40 - (i * 40), 30, anchor="center", image=heart_frames[0])
             self.heart_sprites.append(heart)
 
-        # Game over state
-        self.game_over = False
-
-        # Key tracking
-        self.keys = {'w': False, 'a': False, 's': False, 'd': False}
-        self.action_keys = {'j': False, 'k': False, 'l': False}
-
-        # Load first level
         self.load_level(0)
 
     def load_level(self, level_index):
-        """Load a level by index"""
         if level_index >= len(LEVELS):
             self.show_victory()
             return
 
         self.current_level_index = level_index
         level = LEVELS[level_index]
+        self.game_over = False
 
-        # Clear existing platform and enemies
-        for platform in self.platforms:
-            for tile in platform.tiles:
-                canvas.delete(tile)
-            for deco in platform.decorations:
-                canvas.delete(deco)
-            for water in platform.water_tiles:
-                canvas.delete(water['id'])
+        # Clear canvas
+        canvas.delete("all")
+
+        # Reset hearts
+        self.heart_sprites = []
+        for i in range(3):
+            heart = canvas.create_image(WIDTH - 40 - (i * 40), 30, anchor="center", image=heart_frames[0])
+            self.heart_sprites.append(heart)
+
+        # Clear platforms and enemies
         self.platforms = []
-
-        for enemy in self.enemies:
-            canvas.delete(enemy.sprite)
         self.enemies = []
 
-        # Create platform for this level
         platform_x = (WIDTH - level['platform_width']) // 2
         platform_y = HEIGHT - 300
         start_platform = Platform(
@@ -891,85 +815,46 @@ class Game:
         )
         self.platforms.append(start_platform)
 
-        # Debug: print all tiles in tile_map for level 1.5
-        if level['id'] == 1.5:
-            print(f"Tile map has {len(start_platform.tile_map)} tiles")
-            print("Tiles on row 3:")
-            for (col, row), data in sorted(start_platform.tile_map.items()):
-                if row == 3:
-                    print(f"  ({col}, {row}): {data['tile_type']}")
-
-        # Create or reposition player
-        # Check if level specifies player start tile
+        # Player spawn
         if level.get('player_start'):
-            player_tile = level['player_start']
-            tile_area = start_platform.get_tile_area(player_tile['tile_col'], player_tile['tile_row'])
-            print(f"Player start tile: ({player_tile['tile_col']}, {player_tile['tile_row']})")
-            print(f"Tile area found: {tile_area is not None}")
-            if tile_area:
-                print(f"Tile area: {tile_area}")
-                player_start_x = tile_area['center_x']
-                player_start_y = tile_area['center_y']
-                print(f"Player starting at: ({player_start_x}, {player_start_y})")
-                # Check what tile is actually there
-                if (player_tile['tile_col'], player_tile['tile_row']) in start_platform.tile_map:
-                    actual_tile = start_platform.tile_map[(player_tile['tile_col'], player_tile['tile_row'])]
-                    print(f"Actual tile type: {actual_tile['tile_type']}")
+            tile = level['player_start']
+            area = start_platform.get_tile_area(tile['tile_col'], tile['tile_row'])
+            if area:
+                player_start_x = area['center_x']
+                player_start_y = area['center_y']
             else:
-                # Fallback if tile not found
-                print("Tile not found, using fallback position")
                 player_start_x = WIDTH // 2
                 player_start_y = platform_y + TILE_SIZE // 2
         else:
-            # Default positioning
             player_start_x = WIDTH // 2
             player_start_y = platform_y + TILE_SIZE // 2
 
-        if not hasattr(self, 'player'):
-            self.player = Player(canvas, player_start_x, player_start_y)
-        else:
-            self.player.x = player_start_x
-            self.player.y = player_start_y
-            self.player.vx = 0
-            self.player.vy = 0
-            self.player.state = 'idle'
-            self.player.animation_lock = False
-            canvas.coords(self.player.id, self.player.x, self.player.y)
-            # Make sure player sprite is visible
-            canvas.itemconfig(self.player.id, state='normal')
+        self.player = Player(canvas, player_start_x, player_start_y)
         self.player.set_platform(start_platform)
-
-        # Bring player to front so they appear above platform tiles
         canvas.tag_raise(self.player.id)
 
-        # Create enemies for this level
+        # Enemies
         for enemy_data in level['enemies']:
-            # Check if enemy has tile position or old-style position
             if 'tile_col' in enemy_data and 'tile_row' in enemy_data:
-                # Tile-based positioning
-                tile_area = start_platform.get_tile_area(enemy_data['tile_col'], enemy_data['tile_row'])
-                if tile_area:
-                    enemy_x = tile_area['center_x']
-                    enemy_y = tile_area['center_y']
+                area = start_platform.get_tile_area(enemy_data['tile_col'], enemy_data['tile_row'])
+                if area:
+                    enemy_x = area['center_x']
+                    enemy_y = area['center_y']
                     enemy = Enemy(canvas, enemy_x, enemy_y, start_platform,
-                                enemy_type=enemy_data['type'],
-                                tile_col=enemy_data['tile_col'],
-                                tile_row=enemy_data['tile_row'])
+                                  enemy_type=enemy_data['type'],
+                                  tile_col=enemy_data['tile_col'],
+                                  tile_row=enemy_data['tile_row'])
                 else:
-                    continue  # Skip if tile not found
+                    continue
             else:
-                # Legacy position-based
                 enemy_x = get_enemy_x_position(enemy_data['position'], platform_x, level['platform_width'])
                 enemy_y = player_start_y
                 enemy = Enemy(canvas, enemy_x, enemy_y, start_platform, enemy_type=enemy_data['type'])
 
             self.enemies.append(enemy)
-            # Bring enemy to front so they appear above platform tiles
             canvas.tag_raise(enemy.sprite)
 
-        # Display level name
-        if self.level_name_text:
-            canvas.delete(self.level_name_text)
+        # Level name
         self.level_name_text = canvas.create_text(
             WIDTH // 2, 50,
             text=f"Level {level['id']}: {level['name']}",
@@ -978,75 +863,63 @@ class Game:
             anchor="center"
         )
 
-    def show_victory(self):
-        """Show victory message when all levels complete"""
-        canvas.create_text(
-            WIDTH // 2, HEIGHT // 2,
-            text="VICTORY!\nAll Levels Complete!",
-            font=("Arial", 48, "bold"),
-            fill="gold",
-            anchor="center"
-        )
-        self.game_over = True
+    def show_game_over(self):
+        canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
+        retry_button = tk.Button(canvas.master, text="Retry", font=("Arial", 16), command=self.restart_game)
+        canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
+
+    def restart_game(self):
+        self.player = None
+        self.game_over = False
+        self.load_level(0)
 
     def update(self):
-        # Update player velocity based on keys
+        if self.game_over:
+            root.after(16, self.update)
+            return
+
         vx = 0
         vy = 0
-
-        if self.keys['a']:
-            vx -= MOVE_SPEED
-        if self.keys['d']:
-            vx += MOVE_SPEED
-        if self.keys['w']:
-            vy -= MOVE_SPEED
-        if self.keys['s']:
-            vy += MOVE_SPEED
+        if self.keys['a']: vx -= MOVE_SPEED
+        if self.keys['d']: vx += MOVE_SPEED
+        if self.keys['w']: vy -= MOVE_SPEED
+        if self.keys['s']: vy += MOVE_SPEED
 
         self.player.set_velocity(vx, vy)
         self.player.update(self.platforms)
 
-        # Update enemies
         for enemy in self.enemies:
             enemy.update()
 
-        # Check collision between player and enemies (only if enemy is alive)
-        if not self.game_over:
-            for enemy in self.enemies:
-                if not enemy.is_dead:
-                    # Simple collision detection using distance
-                    dx = self.player.x - enemy.x
-                    dy = self.player.y - enemy.y
-                    distance = (dx**2 + dy**2) ** 0.5
-                    if distance < 50:  # Collision threshold
-                        if self.player.take_damage():
-                            self.game_over = True
-                            self.show_game_over()
-                        else:
-                            self.update_hearts()
+        for enemy in self.enemies:
+            if not enemy.is_dead:
+                dx = self.player.x - enemy.x
+                dy = self.player.y - enemy.y
+                distance = (dx**2 + dy**2) ** 0.5
+                if distance < 50:
+                    if self.player.take_damage():
+                        self.game_over = True
+                        self.show_game_over()
+                    else:
+                        self.update_hearts()
 
-            # Check if all enemies are defeated
-            all_enemies_dead = all(enemy.is_dead for enemy in self.enemies)
-            if all_enemies_dead and len(self.enemies) > 0:
-                # Advance to next level after a short delay
-                if not hasattr(self, 'level_complete_timer'):
-                    self.level_complete_timer = 120  # 2 seconds at 60 FPS
-                else:
-                    self.level_complete_timer -= 1
-                    if self.level_complete_timer <= 0:
-                        delattr(self, 'level_complete_timer')
-                        self.load_level(self.current_level_index + 1)
+        if all(enemy.is_dead for enemy in self.enemies) and self.enemies:
+            if not hasattr(self, 'level_complete_timer'):
+                self.level_complete_timer = 120
+            else:
+                self.level_complete_timer -= 1
+                if self.level_complete_timer <= 0:
+                    delattr(self, 'level_complete_timer')
+                    self.load_level(self.current_level_index + 1)
 
-        # Animate water
         self.water_frame_counter += 1
         if self.water_frame_counter >= self.water_animation_speed:
             self.water_frame_counter = 0
             self.water_frame = (self.water_frame + 1) % 12
-            # Update all platforms' water tiles
             for platform in self.platforms:
                 platform.animate_water(self.water_frame)
 
-        root.after(16, self.update)  # ~60 FPS
+        root.after(16, self.update)
 
     def key_press(self, event):
         key = event.keysym.lower()
@@ -1059,40 +932,27 @@ class Game:
             self.keys[key] = False
 
     def mouse_click(self, event):
-        """Handle left mouse click for attack"""
         if self.player.attack1():
-            # Check if attack hits any enemy
-            attack_range = 70  # Attack reach distance
             for enemy in self.enemies:
                 if not enemy.is_dead:
                     dx = self.player.x - enemy.x
                     dy = self.player.y - enemy.y
                     distance = (dx**2 + dy**2) ** 0.5
-                    if distance < attack_range:
+                    if distance < 70:
                         enemy.take_damage(1)
 
     def mouse_right_click(self, event):
-        """Handle right mouse click for guard"""
         self.player.guard()
 
     def update_hearts(self):
-        """Update heart display based on player health"""
         for i in range(3):
             if i < self.player.health:
-                canvas.itemconfig(self.heart_sprites[i], image=heart_frames[0])  # Full heart
+                canvas.itemconfig(self.heart_sprites[i], image=heart_frames[0])
             else:
-                canvas.itemconfig(self.heart_sprites[i], image=heart_frames[4])  # Empty heart
+                canvas.itemconfig(self.heart_sprites[i], image=heart_frames[4])
 
-    def show_game_over(self):
-        """Display game over message"""
-        canvas.create_text(
-            WIDTH // 2, HEIGHT // 2,
-            text="GAME OVER",
-            font=("Arial", 48, "bold"),
-            fill="red",
-            anchor="center"
-        )
 
+    
 # Initialize game
 game = Game()
 

@@ -124,7 +124,7 @@ tk.Button(craig_frame, image=craig_img, width=150, height=200,
 tk.Label(craig_frame, text="Duck Hunt", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Brandon's Game
-brandon_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "placeholder.png"))
+brandon_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "tower_button.png"))
 images.append(brandon_img)
 brandon_frame = tk.Frame(grid, bg="#1e1e1e")
 brandon_frame.grid(row=1, column=1, padx=40, pady=20)
@@ -132,7 +132,7 @@ tk.Button(brandon_frame, image=brandon_img, width=150, height=200,
           command=lambda: launch_game(os.path.join(BASE_DIR, "Brandon", "tower_tactics", "main.py")),
           borderwidth=2, relief="raised", highlightthickness=2,
           bg="#1e1e1e", activebackground="#333333").pack()
-tk.Label(brandon_frame, text="Brandon's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
+tk.Label(brandon_frame, text="Tower Tactics", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Start the GUI event loop
 root.mainloop()
