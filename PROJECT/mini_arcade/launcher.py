@@ -14,7 +14,7 @@ images = []
 # Create main window
 root = tk.Tk()
 root.title("BitBox Arcade")               # Window title
-root.geometry("1000x700")                 # Window size
+root.geometry("800x750")                 # Window size
 root.configure(bg="#1e1e1e")              # Background color (dark theme)
 
 # Function to launch a game script
@@ -74,7 +74,7 @@ side_panel = tk.Frame(root, bg="#1e1e1e")
 side_panel.pack(side="left", fill="y", padx=(20, 0), pady=20)
 
 # Add About button to side panel
-tk.Button(side_panel, text="About Game", command=open_about_window,
+tk.Button(side_panel, text="About App", command=open_about_window,
           font=("Arial", 12), width=12, height=2,
           bg="#444", fg="white", activebackground="#666", activeforeground="white").pack(pady=10)
 
@@ -83,29 +83,34 @@ grid = tk.Frame(root, bg="#1e1e1e")
 grid.pack()
 
 # Title label at the top
-tk.Label(root, text="BitBox Arcade", font=("Arial", 32, "bold"), fg="white", bg="#1e1e1e").pack(pady=20)
+tk.Label(root, text="BlueTeam Arcade", font=("Arial", 32, "bold"), fg="white", bg="#1e1e1e").pack(pady=20)
+
+# Instruction label
+tk.Label(root, text="Click any image to launch its game.", font=("Arial", 14), fg="#cccccc", bg="#1e1e1e").pack(pady=(0, 20))
 
 # === Game Buttons ===
 
 # Froggy Jump (Alex's game)
-frog_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "frog_button.png"))  # Load button image
-images.append(frog_img)  # Prevent garbage collection
-frog_frame = tk.Frame(grid, bg="#1e1e1e")  # Create frame for button
-frog_frame.grid(row=0, column=0, padx=40, pady=20)  # Position in grid
+frog_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "frog_button.png"))
+images.append(frog_img)
+frog_frame = tk.Frame(grid, bg="#1e1e1e")
+frog_frame.grid(row=0, column=0, padx=40, pady=20)
 tk.Button(frog_frame, image=frog_img, width=150, height=200,
           command=lambda: launch_game(os.path.join(BASE_DIR, "Alex", "froggy_jump", "main.py")),
-          borderwidth=0, bg="#1e1e1e").pack()  # Game launch button
-tk.Label(frog_frame, text="Froggy Jump", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)  # Game label
+          borderwidth=2, relief="raised", highlightthickness=2,
+          bg="#1e1e1e", activebackground="#333333").pack()
+tk.Label(frog_frame, text="Froggy Jump", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Makayla's Game
-mak_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "placeholder.png"))
+mak_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "david_button.png"))
 images.append(mak_img)
 mak_frame = tk.Frame(grid, bg="#1e1e1e")
 mak_frame.grid(row=0, column=1, padx=40, pady=20)
 tk.Button(mak_frame, image=mak_img, width=150, height=200,
-          command=lambda: launch_game(os.path.join(BASE_DIR, "Makayla", "space_blaster", "main.py")),
-          borderwidth=0, bg="#1e1e1e").pack()
-tk.Label(mak_frame, text="Makayla's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
+          command=lambda: launch_game(os.path.join(BASE_DIR, "Makayla", "David_&_Goliath", "main.py")),
+          borderwidth=2, relief="raised", highlightthickness=2,
+          bg="#1e1e1e", activebackground="#333333").pack()
+tk.Label(mak_frame, text="David And Goliath", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Craig's Game
 craig_img = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "duck_button.png"))
@@ -114,7 +119,8 @@ craig_frame = tk.Frame(grid, bg="#1e1e1e")
 craig_frame.grid(row=1, column=0, padx=40, pady=20)
 tk.Button(craig_frame, image=craig_img, width=150, height=200,
           command=lambda: launch_game(os.path.join(BASE_DIR, "Craig", "duckhunt", "shoot.py")),
-          borderwidth=0, bg="#1e1e1e").pack()
+          borderwidth=2, relief="raised", highlightthickness=2,
+          bg="#1e1e1e", activebackground="#333333").pack()
 tk.Label(craig_frame, text="Duck Hunt", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Brandon's Game
@@ -124,7 +130,8 @@ brandon_frame = tk.Frame(grid, bg="#1e1e1e")
 brandon_frame.grid(row=1, column=1, padx=40, pady=20)
 tk.Button(brandon_frame, image=brandon_img, width=150, height=200,
           command=lambda: launch_game(os.path.join(BASE_DIR, "Brandon", "tower_tactics", "main.py")),
-          borderwidth=0, bg="#1e1e1e").pack()
+          borderwidth=2, relief="raised", highlightthickness=2,
+          bg="#1e1e1e", activebackground="#333333").pack()
 tk.Label(brandon_frame, text="Brandon's Game", font=("Arial", 14), fg="white", bg="#1e1e1e").pack(pady=10)
 
 # Start the GUI event loop
