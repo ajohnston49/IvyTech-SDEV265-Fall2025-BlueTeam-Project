@@ -1033,6 +1033,14 @@ class Game:
         retry_button = tk.Button(canvas.master, text="Play Again", font=("Arial", 16), command=self.restart_game)
         canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
         print("Victory screen triggered")
+    
+    def show_game_over(self):
+        canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
+
+        retry_button = tk.Button(canvas.master, text="Try Again", font=("Arial", 16), command=self.restart_game)
+        canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
+
+        print("Game over triggered")
 
     def restart_game(self):
         self.player = None
