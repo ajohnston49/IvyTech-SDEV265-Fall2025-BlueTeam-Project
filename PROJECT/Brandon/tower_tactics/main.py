@@ -17,6 +17,7 @@ SCROLL_THRESHOLD = HEIGHT // 3
 ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
 SPRITE_DIR = os.path.join(ASSET_DIR, "Tiny Swords (Free Pack)")
 
+
 # Setup
 root = tk.Tk()
 root.title("Tower Tactics")
@@ -245,6 +246,9 @@ def restart_game():
     game.player = None  # Force player to be recreated
     game.load_level(game.current_level_index)
 
+flag_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\flag_white.png")
+print("Flag image loaded:", flag_image)
+cloud_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\cloud.png")
 
 class Player:
     def __init__(self, canvas, x, y):
@@ -890,6 +894,7 @@ class Game:
         self.game_over = False
         self.boat = None
         self.intro_done = False
+        self.victory_flag_shown = False
 
         self.keys = {'w': False, 'a': False, 's': False, 'd': False}
         self.action_keys = {'j': False, 'k': False, 'l': False}
@@ -911,6 +916,7 @@ class Game:
         self.game_over = False
         self.boat = None
         self.intro_done = False
+        self.victory_flag_shown = False
 
         canvas.delete("all")
 
@@ -956,7 +962,7 @@ class Game:
                     continue
             else:
                 enemy_x = get_enemy_x_position(enemy_data['position'], platform_x, level['platform_width'])
-                enemy_y = get_enemy_y_position(platform_y, level['platform_height'])  # ✅ NEW
+                enemy_y = get_enemy_y_position(platform_y, level['platform_height'])
                 enemy = Enemy(canvas, enemy_x, enemy_y, start_platform, enemy_type=enemy_data['type'])
 
             self.enemies.append(enemy)
@@ -979,10 +985,54 @@ class Game:
         self.boat.start()
         self.player.freeze = True
 
-    def show_game_over(self):
-        canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
-        retry_button = tk.Button(canvas.master, text="Retry", font=("Arial", 16), command=self.restart_game)
+    def show_level_flag(self):
+        if self.platforms:
+            flag_x = WIDTH // 2
+            flag_y = self.platforms[0].y + self.platforms[0].rect_height // 2
+            canvas.create_image(flag_x, flag_y, anchor="center", image=flag_image)
+
+    def show_cloud_message(self):
+        self.cloud_sprite = canvas.create_image(-200, HEIGHT // 4, anchor="center", image=cloud_image)
+        self.cloud_phase = "entering"
+        self.cloud_x = -200
+        self.cloud_target_x = WIDTH // 2
+        self.cloud_timer = 0
+
+        def animate_cloud():
+            if self.cloud_phase == "entering":
+                self.cloud_x += 12
+                if self.cloud_x >= self.cloud_target_x:
+                    self.cloud_x = self.cloud_target_x
+                    self.cloud_phase = "pausing"
+                    self.cloud_timer = 180
+
+            elif self.cloud_phase == "pausing":
+                self.cloud_timer -= 3
+                self.cloud_x += 0.5
+                if self.cloud_timer <= 0:
+                    self.cloud_phase = "exiting"
+
+            elif self.cloud_phase == "exiting":
+                self.cloud_x += 16
+                if self.cloud_x > WIDTH + 200:
+                    canvas.delete(self.cloud_sprite)
+                    return
+
+            canvas.coords(self.cloud_sprite, self.cloud_x, HEIGHT // 4)
+            root.after(16, animate_cloud)
+
+        animate_cloud()
+
+    def show_victory(self):
+        canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Victory!", font=("Arial", 32), fill="white")
+        if self.platforms:
+            flag_x = WIDTH // 2
+            flag_y = self.platforms[0].y + self.platforms[0].rect_height // 2
+            canvas.create_image(flag_x, flag_y, anchor="center", image=flag_image)
+
+        retry_button = tk.Button(canvas.master, text="Play Again", font=("Arial", 16), command=self.restart_game)
         canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
+        print("Victory screen triggered")
 
     def restart_game(self):
         self.player = None
@@ -1026,6 +1076,11 @@ class Game:
                         self.update_hearts()
 
         if self.intro_done and all(enemy.is_dead for enemy in self.enemies) and self.enemies:
+            if not self.victory_flag_shown:
+                self.victory_flag_shown = True
+                self.show_level_flag()
+                self.show_cloud_message()
+
             if self.boat and self.boat.update(self.player):
                 self.load_level(self.current_level_index + 1)
 
