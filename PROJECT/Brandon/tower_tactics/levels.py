@@ -1,4 +1,4 @@
-# Level configuration for Tower Tactics
+TILE_SIZE = 32  # Standard tile size used across terrain and platform layout
 
 LEVELS = [
     {
@@ -10,8 +10,8 @@ LEVELS = [
             {'type': 'troll', 'position': 'center'}
         ],
         'terrain_color': 'color1',
-        'terrain_layout': None,  # Simple flat platform
-        'player_start': {'tile_col': 6, 'tile_row': 1}  # Center of platform
+        'terrain_layout': None,
+        'player_start': {'tile_col': 6, 'tile_row': 1}
     },
     {
         'id': 1.5,
@@ -209,12 +209,16 @@ LEVELS = [
 def get_enemy_x_position(position, platform_x, platform_width):
     """Calculate enemy X position based on position name"""
     positions = {
-        'far-left': platform_x + 80,
-        'left': platform_x + platform_width * 0.25,
-        'center-left': platform_x + platform_width * 0.33,
+        'far-left': platform_x + platform_width * 0.08,
+        'left': platform_x + platform_width * 0.22,
+        'center-left': platform_x + platform_width * 0.35,
         'center': platform_x + platform_width * 0.5,
-        'center-right': platform_x + platform_width * 0.66,
-        'right': platform_x + platform_width * 0.75,
-        'far-right': platform_x + platform_width - 80
+        'center-right': platform_x + platform_width * 0.65,
+        'right': platform_x + platform_width * 0.78,
+        'far-right': platform_x + platform_width * 0.92
     }
     return positions.get(position, platform_x + platform_width * 0.5)
+
+def get_enemy_y_position(platform_y, platform_height):
+    """Spawn enemies closer to center of platform"""
+    return platform_y + platform_height // 2 - TILE_SIZE // 2

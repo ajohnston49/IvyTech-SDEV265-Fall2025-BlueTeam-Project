@@ -3,7 +3,8 @@ import random
 import os
 from PIL import Image, ImageTk
 from enemies import Enemy, load_enemy_sprites
-from levels import LEVELS, get_enemy_x_position
+from levels import LEVELS, get_enemy_x_position, get_enemy_y_position
+
 
 # Constants
 WIDTH, HEIGHT = 800, 600
@@ -261,13 +262,17 @@ class Player:
         self.animation_lock = False
         self.current_platform = None
         self.health = 3
-        self.invulnerable = True
-        self.invulnerable_timer = 120
-        self.freeze = False  # ✅ NEW
+        self.freeze = False
         self.id = canvas.create_image(x, y, anchor="center", image=player_idle_frames[0])
 
+        # Combat system
+        self.invincible = False
+        self.invincibility_timer = 0
+        self.combo_hits = 0
+        self.guarding = False
+
     def set_velocity(self, vx, vy):
-        if self.freeze:  # ✅ NEW
+        if self.freeze:
             self.vx = 0
             self.vy = 0
         else:
@@ -282,13 +287,21 @@ class Player:
         self.current_platform = platform
 
     def take_damage(self):
-        if not self.invulnerable and self.health > 0:
+        if self.invincible or self.guarding:
+            return False
+
+        self.combo_hits += 1
+        if self.combo_hits >= 2:
+            self.combo_hits = 0
             self.health -= 1
-            self.invulnerable = True
-            self.invulnerable_timer = 60
-            if self.health <= 0:
-                self.handle_player_death()
-                return True
+
+        self.invincible = True
+        self.invincibility_timer = 60  # ~1 second
+
+        if self.health <= 0:
+            self.handle_player_death()
+            return True
+
         return False
 
     def handle_player_death(self):
@@ -297,6 +310,11 @@ class Player:
         self.canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
 
     def update(self, platforms):
+        if self.invincible:
+            self.invincibility_timer -= 1
+            if self.invincibility_timer <= 0:
+                self.invincible = False
+
         if not self.animation_lock:
             intended_x = self.x + self.vx
             intended_y = self.y + self.vy
@@ -326,18 +344,16 @@ class Player:
                     self.x = max(0, min(intended_x, WIDTH))
                     self.y = max(0, min(intended_y, HEIGHT))
 
-        if self.invulnerable:
-            self.invulnerable_timer -= 1
-            if self.invulnerable_timer <= 0:
-                self.invulnerable = False
-
         self.update_sprite()
         self.canvas.coords(self.id, self.x, self.y)
 
     def update_sprite(self):
         is_moving = self.vx != 0 or self.vy != 0
         if not self.animation_lock:
-            self.state = 'run' if is_moving else 'idle'
+            if self.guarding:
+                self.state = 'guard'
+            else:
+                self.state = 'run' if is_moving else 'idle'
 
         if self.state == 'idle':
             frames = player_idle_frames if self.facing_right else player_idle_frames_left
@@ -366,11 +382,9 @@ class Player:
             if self.animation_lock and self.current_frame == 0:
                 self.animation_lock = False
                 self.state = 'idle'
+                self.guarding = False
 
-        if self.invulnerable and (self.frame_counter % 10 < 5):
-            self.canvas.itemconfig(self.id, state='hidden')
-        else:
-            self.canvas.itemconfig(self.id, image=frames[self.current_frame], state='normal')
+        self.canvas.itemconfig(self.id, image=frames[self.current_frame], state='normal')
 
     def attack1(self):
         if not self.animation_lock:
@@ -394,12 +408,14 @@ class Player:
             self.animation_lock = True
             self.current_frame = 0
             self.frame_counter = 0
+            self.guarding = True
 
-    def hide(self):  # ✅ NEW
+    def hide(self):
         self.canvas.itemconfig(self.id, state='hidden')
 
-    def show(self):  # ✅ NEW
+    def show(self):
         self.canvas.itemconfig(self.id, state='normal')
+
 
 
 class Platform:
@@ -784,48 +800,79 @@ class Platform:
 
 
 class Boat:
-    def __init__(self, canvas, x, y, image):
+    def __init__(self, canvas, x, y, image, mode="intro"):
         self.canvas = canvas
         self.x = x
         self.y = y
-        self.vx = 2
+        self.vx = 4 if mode == "intro" else 0  # Moves only during intro or exit ride
         self.image = image
         self.sprite = canvas.create_image(x, y, anchor="center", image=image)
         self.active = False
         self.player_attached = False
+        self.mode = mode
+        self.arrived = False
+        self.departing = False  # Exit trigger
 
     def start(self):
         self.active = True
 
-    def update(self, player):
+    def update(self, player, platform=None):
         if not self.active:
             return False
 
-        # Check for collision
-        if not self.player_attached:
+        # --- INTRO MODE ---
+        if self.mode == "intro":
+            self.x += self.vx
+            self.canvas.coords(self.sprite, self.x, self.y)
+
+            player.x = self.x
+            player.y = self.y - 10
+            player.show()
+            self.canvas.coords(player.id, player.x, player.y)
+            self.canvas.tag_raise(player.id)
+
+            if platform and self.x >= platform.x + 64 and not self.arrived:
+                self.arrived = True
+                player.freeze = False
+                player.x = self.x
+                player.y = self.y - TILE_SIZE  # 1 tile north of boat
+                player.set_platform(platform)
+                self.canvas.coords(player.id, player.x, player.y)
+
+                # ✅ Switch to exit mode and stop moving
+                self.mode = "exit"
+                self.vx = 0
+                return True
+
+            return False
+
+        # --- EXIT MODE ---
+        if not self.departing:
+            # Wait for player to walk into boat
             dx = player.x - self.x
             dy = player.y - self.y
-            distance = (dx**2 + dy**2) ** 0.5
-            if distance < 32:
+            if (dx**2 + dy**2) ** 0.5 < 32:
                 self.player_attached = True
+                self.departing = True
+                self.vx = 2  # Start moving
                 player.set_velocity(0, 0)
                 player.freeze = True
                 player.hide()
 
-        # Move boat (and player if attached)
-        if self.player_attached:
+        if self.departing:
             self.x += self.vx
             self.canvas.coords(self.sprite, self.x, self.y)
-            self.canvas.coords(player.id, self.x, self.y - 10)
-            self.canvas.tag_raise(player.id)
 
+            if self.player_attached:
+                player.x = self.x
+                player.y = self.y - 10
+                self.canvas.coords(player.id, player.x, player.y)
+                self.canvas.tag_raise(player.id)
 
-        # Exit condition
-        if self.player_attached and self.x > self.canvas.winfo_width() + 100:
-            return True
+            if self.x > self.canvas.winfo_width() + 100:
+                return True  # ✅ Boat exited with player
 
         return False
-
 
 class Game:
     def __init__(self):
@@ -842,6 +889,7 @@ class Game:
         self.player = None
         self.game_over = False
         self.boat = None
+        self.intro_done = False
 
         self.keys = {'w': False, 'a': False, 's': False, 'd': False}
         self.action_keys = {'j': False, 'k': False, 'l': False}
@@ -862,6 +910,7 @@ class Game:
         level = LEVELS[level_index]
         self.game_over = False
         self.boat = None
+        self.intro_done = False
 
         canvas.delete("all")
 
@@ -886,18 +935,8 @@ class Game:
         )
         self.platforms.append(start_platform)
 
-        if level.get('player_start'):
-            tile = level['player_start']
-            area = start_platform.get_tile_area(tile['tile_col'], tile['tile_row'])
-            if area:
-                player_start_x = area['center_x']
-                player_start_y = area['center_y']
-            else:
-                player_start_x = WIDTH // 2
-                player_start_y = platform_y + TILE_SIZE // 2
-        else:
-            player_start_x = WIDTH // 2
-            player_start_y = platform_y + TILE_SIZE // 2
+        player_start_x = -100
+        player_start_y = platform_y + TILE_SIZE // 2
 
         self.player = Player(canvas, player_start_x, player_start_y)
         self.player.set_platform(start_platform)
@@ -917,7 +956,7 @@ class Game:
                     continue
             else:
                 enemy_x = get_enemy_x_position(enemy_data['position'], platform_x, level['platform_width'])
-                enemy_y = player_start_y
+                enemy_y = get_enemy_y_position(platform_y, level['platform_height'])  # ✅ NEW
                 enemy = Enemy(canvas, enemy_x, enemy_y, start_platform, enemy_type=enemy_data['type'])
 
             self.enemies.append(enemy)
@@ -931,12 +970,14 @@ class Game:
             anchor="center"
         )
 
-    def start_boat_sequence(self):
+        self.start_intro_boat_sequence()
+
+    def start_intro_boat_sequence(self):
         platform = self.platforms[0]
-        boat_x = platform.x + platform.rect_width - 64
-        boat_y = platform.y + platform.rect_height + 16  # or +32 depending on your water tile depth
-        self.boat = Boat(canvas, boat_x, boat_y, boat_frames[0])
+        boat_y = platform.y + platform.rect_height + 16
+        self.boat = Boat(canvas, -100, boat_y, boat_frames[0], mode="intro")
         self.boat.start()
+        self.player.freeze = True
 
     def show_game_over(self):
         canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
@@ -950,6 +991,12 @@ class Game:
 
     def update(self):
         if self.game_over:
+            root.after(16, self.update)
+            return
+
+        if not self.intro_done:
+            if self.boat and self.boat.update(self.player, self.platforms[0]):
+                self.intro_done = True
             root.after(16, self.update)
             return
 
@@ -978,11 +1025,8 @@ class Game:
                     else:
                         self.update_hearts()
 
-        # Boat sequence logic
-        if all(enemy.is_dead for enemy in self.enemies) and self.enemies:
-            if not self.boat:
-                self.start_boat_sequence()
-            elif self.boat.update(self.player):
+        if self.intro_done and all(enemy.is_dead for enemy in self.enemies) and self.enemies:
+            if self.boat and self.boat.update(self.player):
                 self.load_level(self.current_level_index + 1)
 
         self.water_frame_counter += 1
@@ -1023,7 +1067,6 @@ class Game:
                 canvas.itemconfig(self.heart_sprites[i], image=heart_frames[0])
             else:
                 canvas.itemconfig(self.heart_sprites[i], image=heart_frames[4])
-
 
     
 # Initialize game
