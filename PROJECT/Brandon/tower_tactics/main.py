@@ -25,6 +25,19 @@ canvas.pack()
 # Load enemy sprites after Tkinter window is created
 load_enemy_sprites()
 
+def load_boat_frames(frame_width, frame_height):
+    base_dir = os.path.dirname(__file__)
+    path = os.path.join(base_dir, "assets", "boat_idle.png")
+    sheet = Image.open(path)
+    frames = []
+    for i in range(sheet.width // frame_width):
+        frame = sheet.crop((i * frame_width, 0, (i + 1) * frame_width, frame_height))
+        frames.append(ImageTk.PhotoImage(frame))
+    return frames
+
+boat_frames = load_boat_frames(64, 64)
+
+
 # Load heart sprite for health display (5 frames: full, 3/4, half, 1/4, empty)
 heart_img = Image.open(os.path.join(ASSET_DIR, "heart_animated_1.png"))
 heart_frames = []
@@ -248,16 +261,31 @@ class Player:
         self.animation_lock = False
         self.current_platform = None
         self.health = 3
-        self.invulnerable = False
-        self.invulnerable_timer = 0
+        self.invulnerable = True
+        self.invulnerable_timer = 120
+        self.freeze = False  # ✅ NEW
         self.id = canvas.create_image(x, y, anchor="center", image=player_idle_frames[0])
+
+    def set_velocity(self, vx, vy):
+        if self.freeze:  # ✅ NEW
+            self.vx = 0
+            self.vy = 0
+        else:
+            self.vx = vx
+            self.vy = vy
+            if vx > 0:
+                self.facing_right = True
+            elif vx < 0:
+                self.facing_right = False
+
+    def set_platform(self, platform):
+        self.current_platform = platform
 
     def take_damage(self):
         if not self.invulnerable and self.health > 0:
             self.health -= 1
             self.invulnerable = True
             self.invulnerable_timer = 60
-
             if self.health <= 0:
                 self.handle_player_death()
                 return True
@@ -272,7 +300,6 @@ class Player:
         if not self.animation_lock:
             intended_x = self.x + self.vx
             intended_y = self.y + self.vy
-            buffer = 4
 
             def is_colliding_with_solid(x, y, solids):
                 for obj in solids:
@@ -283,24 +310,21 @@ class Player:
             if self.current_platform and is_colliding_with_solid(intended_x, intended_y, self.current_platform.solid_objects):
                 self.vx = 0
                 self.vy = 0
-                intended_x = self.x
-                intended_y = self.y
+            else:
+                if self.current_platform and self.current_platform.tile_map:
+                    col = int((intended_x - self.current_platform.rect_x) // TILE_SIZE)
+                    row = int((intended_y - self.current_platform.rect_y) // TILE_SIZE)
+                    tile = self.current_platform.tile_map.get((col, row))
 
-            if self.current_platform and self.current_platform.tile_map:
-                next_tile = self.current_platform.get_tile_at_position(intended_x, intended_y)
-                if next_tile:
-                    self.x = intended_x
-                    self.y = intended_y
-                else:
-                    if abs(self.vx) < buffer and abs(self.vy) < buffer:
+                    if tile and tile.get('tile_type') != 'invisible_wall':
                         self.x = intended_x
                         self.y = intended_y
                     else:
                         self.vx = 0
                         self.vy = 0
-            else:
-                self.x = max(0, min(intended_x, WIDTH))
-                self.y = max(0, min(intended_y, HEIGHT))
+                else:
+                    self.x = max(0, min(intended_x, WIDTH))
+                    self.y = max(0, min(intended_y, HEIGHT))
 
         if self.invulnerable:
             self.invulnerable_timer -= 1
@@ -312,7 +336,6 @@ class Player:
 
     def update_sprite(self):
         is_moving = self.vx != 0 or self.vy != 0
-
         if not self.animation_lock:
             self.state = 'run' if is_moving else 'idle'
 
@@ -340,23 +363,14 @@ class Player:
         if self.frame_counter >= speed:
             self.frame_counter = 0
             self.current_frame = (self.current_frame + 1) % max_frames
-
             if self.animation_lock and self.current_frame == 0:
                 self.animation_lock = False
                 self.state = 'idle'
 
-        self.canvas.itemconfig(self.id, image=frames[self.current_frame])
-
-    def set_velocity(self, vx, vy):
-        self.vx = vx
-        self.vy = vy
-        if vx > 0:
-            self.facing_right = True
-        elif vx < 0:
-            self.facing_right = False
-
-    def set_platform(self, platform):
-        self.current_platform = platform
+        if self.invulnerable and (self.frame_counter % 10 < 5):
+            self.canvas.itemconfig(self.id, state='hidden')
+        else:
+            self.canvas.itemconfig(self.id, image=frames[self.current_frame], state='normal')
 
     def attack1(self):
         if not self.animation_lock:
@@ -381,15 +395,28 @@ class Player:
             self.current_frame = 0
             self.frame_counter = 0
 
+    def hide(self):  # ✅ NEW
+        self.canvas.itemconfig(self.id, state='hidden')
+
+    def show(self):  # ✅ NEW
+        self.canvas.itemconfig(self.id, state='normal')
+
 
 class Platform:
     def __init__(self, canvas, x, y, width, height, terrain_color=None, terrain_layout=None):
         """Create a rectangular contained platform"""
         self.canvas = canvas
+
+        # Store position for external access (e.g. boat logic)
+        self.x = x
+        self.y = y
+
+        # Internal rect values (used for layout logic)
         self.rect_x = x
         self.rect_y = y
         self.rect_width = width
         self.rect_height = height
+
         self.tiles = []
         self.solid_objects = []  # Track solid decorations like trees
         self.decorations = []
@@ -755,6 +782,51 @@ class Platform:
         """Check if platform has scrolled off screen"""
         return self.rect_y > HEIGHT + self.rect_height
 
+
+class Boat:
+    def __init__(self, canvas, x, y, image):
+        self.canvas = canvas
+        self.x = x
+        self.y = y
+        self.vx = 2
+        self.image = image
+        self.sprite = canvas.create_image(x, y, anchor="center", image=image)
+        self.active = False
+        self.player_attached = False
+
+    def start(self):
+        self.active = True
+
+    def update(self, player):
+        if not self.active:
+            return False
+
+        # Check for collision
+        if not self.player_attached:
+            dx = player.x - self.x
+            dy = player.y - self.y
+            distance = (dx**2 + dy**2) ** 0.5
+            if distance < 32:
+                self.player_attached = True
+                player.set_velocity(0, 0)
+                player.freeze = True
+                player.hide()
+
+        # Move boat (and player if attached)
+        if self.player_attached:
+            self.x += self.vx
+            self.canvas.coords(self.sprite, self.x, self.y)
+            self.canvas.coords(player.id, self.x, self.y - 10)
+            self.canvas.tag_raise(player.id)
+
+
+        # Exit condition
+        if self.player_attached and self.x > self.canvas.winfo_width() + 100:
+            return True
+
+        return False
+
+
 class Game:
     def __init__(self):
         self.platforms = []
@@ -769,6 +841,7 @@ class Game:
         self.enemies = []
         self.player = None
         self.game_over = False
+        self.boat = None
 
         self.keys = {'w': False, 'a': False, 's': False, 'd': False}
         self.action_keys = {'j': False, 'k': False, 'l': False}
@@ -788,17 +861,15 @@ class Game:
         self.current_level_index = level_index
         level = LEVELS[level_index]
         self.game_over = False
+        self.boat = None
 
-        # Clear canvas
         canvas.delete("all")
 
-        # Reset hearts
         self.heart_sprites = []
         for i in range(3):
             heart = canvas.create_image(WIDTH - 40 - (i * 40), 30, anchor="center", image=heart_frames[0])
             self.heart_sprites.append(heart)
 
-        # Clear platforms and enemies
         self.platforms = []
         self.enemies = []
 
@@ -815,7 +886,6 @@ class Game:
         )
         self.platforms.append(start_platform)
 
-        # Player spawn
         if level.get('player_start'):
             tile = level['player_start']
             area = start_platform.get_tile_area(tile['tile_col'], tile['tile_row'])
@@ -833,7 +903,6 @@ class Game:
         self.player.set_platform(start_platform)
         canvas.tag_raise(self.player.id)
 
-        # Enemies
         for enemy_data in level['enemies']:
             if 'tile_col' in enemy_data and 'tile_row' in enemy_data:
                 area = start_platform.get_tile_area(enemy_data['tile_col'], enemy_data['tile_row'])
@@ -854,7 +923,6 @@ class Game:
             self.enemies.append(enemy)
             canvas.tag_raise(enemy.sprite)
 
-        # Level name
         self.level_name_text = canvas.create_text(
             WIDTH // 2, 50,
             text=f"Level {level['id']}: {level['name']}",
@@ -862,6 +930,13 @@ class Game:
             fill="white",
             anchor="center"
         )
+
+    def start_boat_sequence(self):
+        platform = self.platforms[0]
+        boat_x = platform.x + platform.rect_width - 64
+        boat_y = platform.y + platform.rect_height + 16  # or +32 depending on your water tile depth
+        self.boat = Boat(canvas, boat_x, boat_y, boat_frames[0])
+        self.boat.start()
 
     def show_game_over(self):
         canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
@@ -903,14 +978,12 @@ class Game:
                     else:
                         self.update_hearts()
 
+        # Boat sequence logic
         if all(enemy.is_dead for enemy in self.enemies) and self.enemies:
-            if not hasattr(self, 'level_complete_timer'):
-                self.level_complete_timer = 120
-            else:
-                self.level_complete_timer -= 1
-                if self.level_complete_timer <= 0:
-                    delattr(self, 'level_complete_timer')
-                    self.load_level(self.current_level_index + 1)
+            if not self.boat:
+                self.start_boat_sequence()
+            elif self.boat.update(self.player):
+                self.load_level(self.current_level_index + 1)
 
         self.water_frame_counter += 1
         if self.water_frame_counter >= self.water_animation_speed:
