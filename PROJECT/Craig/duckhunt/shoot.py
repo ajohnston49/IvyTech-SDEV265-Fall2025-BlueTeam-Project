@@ -3,27 +3,29 @@ import os
 from random import randint
 
 # === Setup ===
-os.environ['SDL_VIDEO_CENTERED'] = '1'  # Center the game window on screen
+os.environ['SDL_VIDEO_CENTERED'] = '1'
 pygame.init()
 pygame.font.init()
+pygame.mixer.init()
 
-WIDTH, HEIGHT = 500, 500  # Window size
+WIDTH, HEIGHT = 500, 500
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("HUNT THE DUCK")  # Window title
-clock = pygame.time.Clock()  # Controls frame rate
+pygame.display.set_caption("HUNT THE DUCK")
+clock = pygame.time.Clock()
 
 # === Game States ===
 GAME_STATE_TITLE = 0
 GAME_STATE_PLAYING = 1
 GAME_STATE_GAME_OVER = 2
 GAME_STATE_WINNER = 3
-current_game_state = GAME_STATE_TITLE  # Start at title screen
+current_game_state = GAME_STATE_TITLE
 
 # === Asset Paths ===
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Current script location
-IMAGES_DIR = os.path.join(SCRIPT_DIR, "images")          # Folder with image assets
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(SCRIPT_DIR, "images")
+SOUNDS_DIR = os.path.join(SCRIPT_DIR, "sounds")
 
-# === Load Images Safely ===
+# === Load Images ===
 def load_image(name):
     path = os.path.join(IMAGES_DIR, name)
     try:
@@ -32,12 +34,17 @@ def load_image(name):
         print(f"Failed to load image '{name}': {e}")
         raise SystemExit
 
-# === Game Images ===
 background = load_image("field.png")
 duck_img = load_image("duckfly3.png")
 duck2_img = load_image("duckfly4.png")
 dead_duck_img = load_image("deadduck3.png")
 sight_img = load_image("sight3.png")
+
+# === Load Sounds ===
+shoot_sound = pygame.mixer.Sound(os.path.join(SOUNDS_DIR, "shoot.mp3"))
+pygame.mixer.music.load(os.path.join(SOUNDS_DIR, "background.mp3"))
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1)  # Loop forever
 
 # === Fonts ===
 font_big = pygame.font.SysFont("Arial", 60)
@@ -48,12 +55,12 @@ font_huge = pygame.font.SysFont("Arial", 90)
 class Duck:
     def __init__(self, image, x, y):
         self.image = image
-        self.rect = self.image.get_rect(center=(x, y))  # Position and size
+        self.rect = self.image.get_rect(center=(x, y))
         self.vy = 0
         self.dead = False
 
     def draw(self):
-        screen.blit(self.image, self.rect)  # Draw duck
+        screen.blit(self.image, self.rect)
 
     def reset(self, x, y, image):
         self.image = image
@@ -62,14 +69,14 @@ class Duck:
         self.dead = False
 
 # === Game Objects ===
-apple = Duck(duck_img, randint(10, 200), randint(300, 400))  # Main duck
-duck2 = Duck(duck2_img, randint(480, 500), randint(300, 400))  # Second duck
-duck2_active = False  # Starts inactive
-sight_rect = sight_img.get_rect()  # Sight reticle
+apple = Duck(duck_img, randint(10, 200), randint(300, 400))
+duck2 = Duck(duck2_img, randint(480, 500), randint(300, 400))
+duck2_active = False
+sight_rect = sight_img.get_rect()
 
 score = 0
 game_over = False
-GRAVITY = 0.5  # Gravity for falling ducks
+GRAVITY = 0.5
 
 # === Reset Functions ===
 def reset_apple():
@@ -87,17 +94,16 @@ def draw_text(text, font, color, center):
 # === Main Game Loop ===
 running = True
 while running:
-    screen.fill((0, 0, 0))  # Clear screen
+    screen.fill((0, 0, 0))
     mouse_pos = pygame.mouse.get_pos()
-    sight_rect.center = mouse_pos  # Move sight to mouse
+    sight_rect.center = mouse_pos
 
-    # === Event Handling ===
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN and current_game_state == GAME_STATE_PLAYING and not game_over:
-            # Check if duck was hit
+            shoot_sound.play()
             if apple.rect.collidepoint(mouse_pos):
                 score += 1
                 apple.dead = True
@@ -113,7 +119,6 @@ while running:
             if current_game_state == GAME_STATE_TITLE and event.key == pygame.K_SPACE:
                 current_game_state = GAME_STATE_PLAYING
             elif current_game_state in [GAME_STATE_GAME_OVER, GAME_STATE_WINNER] and event.key == pygame.K_r:
-                # Restart game
                 current_game_state = GAME_STATE_PLAYING
                 game_over = False
                 score = 0
@@ -121,19 +126,16 @@ while running:
                 reset_apple()
                 reset_duck2()
 
-    # === Title Screen ===
     if current_game_state == GAME_STATE_TITLE:
         screen.fill((0, 100, 0))
         draw_text("Hunt The Duck!", font_huge, (255, 165, 0), (WIDTH // 2, HEIGHT // 3))
         draw_text("Press SPACE to Start", font_med, (255, 255, 255), (WIDTH // 2, HEIGHT // 1.5))
 
-    # === Gameplay ===
     elif current_game_state == GAME_STATE_PLAYING:
         screen.blit(background, (0, 0))
         draw_text(f"Score: {score}", font_med, (255, 255, 255), (70, 20))
 
         if not game_over:
-            # Duck movement logic based on score
             if not apple.dead:
                 if 5 <= score <= 10:
                     apple.rect.x += 3
@@ -162,18 +164,15 @@ while running:
                     apple.rect.x += 2
                     apple.rect.y -= 1
 
-                # Wrap or reset duck if off screen
                 if apple.rect.left > WIDTH:
                     apple.rect.right = 0
                 if apple.rect.top < 0:
                     reset_apple()
             else:
-                # Dead duck falls
                 apple.vy += GRAVITY
                 apple.rect.y += apple.vy
                 apple.image = dead_duck_img
 
-            # Duck2 movement and falling
             if duck2_active:
                 if not duck2.dead:
                     if duck2.rect.right < 0:
@@ -185,47 +184,37 @@ while running:
                     duck2.rect.y += duck2.vy
                     duck2.image = dead_duck_img
 
-            # Reset ducks if they fall off screen
             if apple.rect.bottom > HEIGHT:
                 reset_apple()
             if duck2.rect.bottom > HEIGHT:
                 reset_duck2()
 
-            # Activate duck2 after score threshold
             if score >= 10 and not duck2_active:
                 duck2_active = True
                 reset_duck2()
 
-            # Win condition
             if score == 30:
                 current_game_state = GAME_STATE_WINNER
                 game_over = True
 
-            # Draw ducks
             apple.draw()
             if duck2_active:
                 duck2.draw()
 
-    # === Game Over Screen ===
     elif current_game_state == GAME_STATE_GAME_OVER:
         screen.fill((0, 0, 0))
         draw_text("GAME OVER", font_big, (255, 0, 0), (WIDTH // 2, HEIGHT // 2 - 40))
         draw_text(f"Final Score: {score}", font_med, (255, 255, 255), (WIDTH // 2, HEIGHT // 2 + 10))
         draw_text("Hit 'R' to restart", font_med, (255, 255, 255), (WIDTH // 2, HEIGHT // 2 + 50))
 
-    # === Winner Screen ===
     elif current_game_state == GAME_STATE_WINNER:
         screen.fill((0, 100, 0))
         draw_text("YOU WIN!!!", font_big, (255, 165, 0), (WIDTH // 2, HEIGHT // 2 - 40))
         draw_text(f"Final Score: {score}", font_med, (255, 255, 255), (WIDTH // 2, HEIGHT // 2 + 10))
         draw_text("Hit 'R' to restart", font_med, (255, 255, 255), (WIDTH // 2, HEIGHT // 2 + 50))
 
-    # === Draw Sight Reticle ===
     screen.blit(sight_img, sight_rect)
+    pygame.display.flip()
+    clock.tick(60)
 
-    # === Refresh Display ===
-    pygame.display.flip()       # Update the screen with everything drawn
-    clock.tick(60)              # Limit frame rate to 60 FPS
-
-# === Exit Game ===
-pygame.quit()                   # Cleanly close the game when loop ends
+pygame.quit()
