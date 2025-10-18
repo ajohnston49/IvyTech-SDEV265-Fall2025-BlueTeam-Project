@@ -1,6 +1,10 @@
 import tkinter as tk
 import random
 import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+import pygame
+pygame.mixer.init()
 from PIL import Image, ImageTk
 from enemies import Enemy, load_enemy_sprites
 from levels import LEVELS, get_enemy_x_position, get_enemy_y_position
@@ -253,7 +257,7 @@ cloud_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDE
 title_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\title.png")
 
 class Player:
-    def __init__(self, canvas, x, y):
+    def __init__(self, canvas, x, y, sounds=None):
         self.canvas = canvas
         self.x = x
         self.y = y
@@ -276,6 +280,9 @@ class Player:
         self.invincibility_timer = 0
         self.combo_hits = 0
         self.guarding = False
+
+        # Sound system
+        self.sounds = sounds or {}
 
     def set_velocity(self, vx, vy):
         if self.freeze:
@@ -300,6 +307,8 @@ class Player:
         if self.combo_hits >= 2:
             self.combo_hits = 0
             self.health -= 1
+            if "hurt" in self.sounds:
+                self.sounds["hurt"].play()
 
         self.invincible = True
         self.invincibility_timer = 60  # ~1 second
@@ -398,6 +407,8 @@ class Player:
             self.animation_lock = True
             self.current_frame = 0
             self.frame_counter = 0
+            if "miss" in self.sounds:
+                self.sounds["miss"].play()
             return True
         return False
 
@@ -421,6 +432,7 @@ class Player:
 
     def show(self):
         self.canvas.itemconfig(self.id, state='normal')
+
 
 
 
@@ -880,8 +892,21 @@ class Boat:
 
         return False
 
+import pygame
+
 class Game:
     def __init__(self):
+        pygame.mixer.init()
+        self.sounds = {
+            "background": pygame.mixer.Sound(os.path.join(BASE_DIR, "assets", "sounds", "background.mp3")),
+            "hurt": pygame.mixer.Sound(os.path.join(BASE_DIR, "assets", "sounds", "hurt.mp3")),
+            "attack": pygame.mixer.Sound(os.path.join(BASE_DIR, "assets", "sounds", "attack.mp3")),
+            "miss": pygame.mixer.Sound(os.path.join(BASE_DIR, "assets", "sounds", "miss.mp3"))
+        }
+
+        self.sounds["background"].set_volume(0.5)
+        self.sounds["background"].play(loops=-1)
+
         self.platforms = []
         self.camera_y = 0
         self.score = 0
@@ -940,7 +965,7 @@ class Game:
 
         player_start_x = -100
         player_start_y = platform_y + TILE_SIZE // 2
-        self.player = Player(canvas, player_start_x, player_start_y)
+        self.player = Player(canvas, player_start_x, player_start_y, sounds=self.sounds)
         self.player.set_platform(start_platform)
         canvas.tag_raise(self.player.id)
 
@@ -979,6 +1004,7 @@ class Game:
         self.boat = Boat(canvas, -100, boat_y, boat_frames[0], mode="intro")
         self.boat.start()
         self.player.freeze = True
+        self.player.show()  # Ensure player is visible
 
     def show_intro_title(self):
         self.title_sprite = canvas.create_image(WIDTH // 2, HEIGHT // 2, anchor="center", image=title_image)
@@ -986,16 +1012,8 @@ class Game:
         self.title_alpha = 0
         self.title_timer = 0
 
-    def show_intro_title(self):
-        self.title_sprite = canvas.create_image(WIDTH // 2, HEIGHT // 2, anchor="center", image=title_image)
-        self.title_phase = "fade_in"
-        self.title_alpha = 0
-        self.title_timer = 0
-
-        # Estimated boat arrival sync (~3.5 seconds total)
-        fade_speed = 8         # pixels per frame
-        pause_duration = 60    # ~1 second at 60fps
-        total_duration = 220   # ~3.5 seconds total
+        fade_speed = 8
+        pause_duration = 60
 
         def animate_title():
             if self.title_phase == "fade_in":
@@ -1004,25 +1022,18 @@ class Game:
                     self.title_alpha = 255
                     self.title_phase = "pause"
                     self.title_timer = pause_duration
-
             elif self.title_phase == "pause":
                 self.title_timer -= 2
                 if self.title_timer <= 0:
                     self.title_phase = "fade_out"
-
             elif self.title_phase == "fade_out":
                 self.title_alpha -= fade_speed
                 if self.title_alpha <= 0:
                     canvas.delete(self.title_sprite)
                     return
-
-            # Optional: simulate alpha with pre-faded frames or just timed display
-            # You can swap images here if you have multiple opacity versions
-
             root.after(16, animate_title)
 
         animate_title()
-
 
     def show_level_flag(self):
         if self.platforms:
@@ -1080,70 +1091,86 @@ class Game:
         self.load_level(0)
 
     def update(self):
-        if self.game_over:
+            if self.game_over:
+                root.after(16, self.update)
+                return
+
+            if not self.intro_done:
+                if self.boat and self.boat.update(self.player, self.platforms[0]):
+                    self.intro_done = True
+                    self.player.freeze = False  # Unfreeze player after boat intro
+                root.after(16, self.update)
+                return
+
+            # Movement input
+            vx = 0
+            vy = 0
+            if self.keys['a']: vx -= MOVE_SPEED
+            if self.keys['d']: vx += MOVE_SPEED
+            if self.keys['w']: vy -= MOVE_SPEED
+            if self.keys['s']: vy += MOVE_SPEED
+
+            self.player.set_velocity(vx, vy)
+            self.player.update(self.platforms)
+
+            for enemy in self.enemies:
+                enemy.update()
+
+            for enemy in self.enemies:
+                if not enemy.is_dead:
+                    dx = self.player.x - enemy.x
+                    dy = self.player.y - enemy.y
+                    distance = (dx**2 + dy**2) ** 0.5
+                    if distance < 50:
+                        if self.player.take_damage():
+                            self.game_over = True
+                            self.show_game_over()
+                        else:
+                            self.update_hearts()
+
+            if self.intro_done and all(enemy.is_dead for enemy in self.enemies) and self.enemies:
+                if not self.victory_flag_shown:
+                    self.victory_flag_shown = True
+                    self.show_level_flag()
+                    self.show_cloud_message()
+
+                if self.boat and self.boat.update(self.player):
+                    self.load_level(self.current_level_index + 1)
+
+            self.water_frame_counter += 1
+            if self.water_frame_counter >= self.water_animation_speed:
+                self.water_frame_counter = 0
+                self.water_frame = (self.water_frame + 1) % 12
+                for platform in self.platforms:
+                    platform.animate_water(self.water_frame)
+
             root.after(16, self.update)
-            return
-
-        if not self.intro_done:
-            if self.boat and self.boat.update(self.player, self.platforms[0]):
-                self.intro_done = True
-            root.after(16, self.update)
-            return
-
-        vx = 0
-        vy = 0
-        if self.keys['a']: vx -= MOVE_SPEED
-        if self.keys['d']: vx += MOVE_SPEED
-        if self.keys['w']: vy -= MOVE_SPEED
-        if self.keys['s']: vy += MOVE_SPEED
-
-        self.player.set_velocity(vx, vy)
-        self.player.update(self.platforms)
-
-        for enemy in self.enemies:
-            enemy.update()
-
-        for enemy in self.enemies:
-            if not enemy.is_dead:
-                dx = self.player.x - enemy.x
-                dy = self.player.y - enemy.y
-                distance = (dx**2 + dy**2) ** 0.5
-                if distance < 50:
-                    if self.player.take_damage():
-                        self.game_over = True
-                        self.show_game_over()
-                    else:
-                        self.update_hearts()
-        if self.intro_done and all(enemy.is_dead for enemy in self.enemies) and self.enemies:
-            if not self.victory_flag_shown:
-                self.victory_flag_shown = True
-                self.show_level_flag()
-                self.show_cloud_message()
-
-            if self.boat and self.boat.update(self.player):
-                self.load_level(self.current_level_index + 1)
-
-        self.water_frame_counter += 1
-        if self.water_frame_counter >= self.water_animation_speed:
-            self.water_frame_counter = 0
-            self.water_frame = (self.water_frame + 1) % 12
-            for platform in self.platforms:
-                platform.animate_water(self.water_frame)
-
-        root.after(16, self.update)
 
     def key_press(self, event):
         key = event.keysym.lower()
         if key in self.keys:
             self.keys[key] = True
+        elif key in self.action_keys:
+            if key == 'j':
+                self.player.attack1()
+            elif key == 'k':
+                self.player.attack2()
+            elif key == 'l':
+                self.player.guard()
 
     def key_release(self, event):
         key = event.keysym.lower()
         if key in self.keys:
             self.keys[key] = False
 
+
+
+    def mouse_right_click(self, event):
+        self.player.guard()
+
     def mouse_click(self, event):
         if self.player.attack1():
+            hit_registered = False
             for enemy in self.enemies:
                 if not enemy.is_dead:
                     dx = self.player.x - enemy.x
@@ -1151,9 +1178,16 @@ class Game:
                     distance = (dx**2 + dy**2) ** 0.5
                     if distance < 70:
                         enemy.take_damage(1)
+                        hit_registered = True
 
-    def mouse_right_click(self, event):
-        self.player.guard()
+            # ✅ Play sound based on hit or miss
+            if hit_registered:
+                if "attack" in self.player.sounds:
+                    self.player.sounds["attack"].play()
+            else:
+                if "miss" in self.player.sounds:
+                    self.player.sounds["miss"].play()
+
 
     def update_hearts(self):
         for i in range(3):
