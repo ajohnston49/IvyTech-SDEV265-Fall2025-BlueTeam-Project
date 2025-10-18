@@ -249,6 +249,8 @@ def restart_game():
 flag_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\flag_white.png")
 print("Flag image loaded:", flag_image)
 cloud_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\cloud.png")
+# Load title image for intro screen
+title_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\title.png")
 
 class Player:
     def __init__(self, canvas, x, y):
@@ -930,20 +932,14 @@ class Game:
 
         platform_x = (WIDTH - level['platform_width']) // 2
         platform_y = HEIGHT - 300
-        start_platform = Platform(
-            canvas,
-            platform_x,
-            platform_y,
-            level['platform_width'],
-            level['platform_height'],
-            terrain_color=level['terrain_color'],
-            terrain_layout=level.get('terrain_layout')
-        )
+        start_platform = Platform(canvas, platform_x, platform_y,
+                                  level['platform_width'], level['platform_height'],
+                                  terrain_color=level['terrain_color'],
+                                  terrain_layout=level.get('terrain_layout'))
         self.platforms.append(start_platform)
 
         player_start_x = -100
         player_start_y = platform_y + TILE_SIZE // 2
-
         self.player = Player(canvas, player_start_x, player_start_y)
         self.player.set_platform(start_platform)
         canvas.tag_raise(self.player.id)
@@ -968,15 +964,14 @@ class Game:
             self.enemies.append(enemy)
             canvas.tag_raise(enemy.sprite)
 
-        self.level_name_text = canvas.create_text(
-            WIDTH // 2, 50,
+        self.level_name_text = canvas.create_text(WIDTH // 2, 50,
             text=f"Level {level['id']}: {level['name']}",
-            font=("Arial", 20, "bold"),
-            fill="white",
-            anchor="center"
-        )
+            font=("Arial", 20, "bold"), fill="white", anchor="center")
 
         self.start_intro_boat_sequence()
+
+        if self.current_level_index == 0:
+            self.show_intro_title()
 
     def start_intro_boat_sequence(self):
         platform = self.platforms[0]
@@ -984,6 +979,50 @@ class Game:
         self.boat = Boat(canvas, -100, boat_y, boat_frames[0], mode="intro")
         self.boat.start()
         self.player.freeze = True
+
+    def show_intro_title(self):
+        self.title_sprite = canvas.create_image(WIDTH // 2, HEIGHT // 2, anchor="center", image=title_image)
+        self.title_phase = "fade_in"
+        self.title_alpha = 0
+        self.title_timer = 0
+
+    def show_intro_title(self):
+        self.title_sprite = canvas.create_image(WIDTH // 2, HEIGHT // 2, anchor="center", image=title_image)
+        self.title_phase = "fade_in"
+        self.title_alpha = 0
+        self.title_timer = 0
+
+        # Estimated boat arrival sync (~3.5 seconds total)
+        fade_speed = 8         # pixels per frame
+        pause_duration = 60    # ~1 second at 60fps
+        total_duration = 220   # ~3.5 seconds total
+
+        def animate_title():
+            if self.title_phase == "fade_in":
+                self.title_alpha += fade_speed
+                if self.title_alpha >= 255:
+                    self.title_alpha = 255
+                    self.title_phase = "pause"
+                    self.title_timer = pause_duration
+
+            elif self.title_phase == "pause":
+                self.title_timer -= 2
+                if self.title_timer <= 0:
+                    self.title_phase = "fade_out"
+
+            elif self.title_phase == "fade_out":
+                self.title_alpha -= fade_speed
+                if self.title_alpha <= 0:
+                    canvas.delete(self.title_sprite)
+                    return
+
+            # Optional: simulate alpha with pre-faded frames or just timed display
+            # You can swap images here if you have multiple opacity versions
+
+            root.after(16, animate_title)
+
+        animate_title()
+
 
     def show_level_flag(self):
         if self.platforms:
@@ -1002,22 +1041,18 @@ class Game:
             if self.cloud_phase == "entering":
                 self.cloud_x += 12
                 if self.cloud_x >= self.cloud_target_x:
-                    self.cloud_x = self.cloud_target_x
                     self.cloud_phase = "pausing"
                     self.cloud_timer = 180
-
             elif self.cloud_phase == "pausing":
                 self.cloud_timer -= 3
                 self.cloud_x += 0.5
                 if self.cloud_timer <= 0:
                     self.cloud_phase = "exiting"
-
             elif self.cloud_phase == "exiting":
                 self.cloud_x += 16
                 if self.cloud_x > WIDTH + 200:
                     canvas.delete(self.cloud_sprite)
                     return
-
             canvas.coords(self.cloud_sprite, self.cloud_x, HEIGHT // 4)
             root.after(16, animate_cloud)
 
@@ -1029,17 +1064,14 @@ class Game:
             flag_x = WIDTH // 2
             flag_y = self.platforms[0].y + self.platforms[0].rect_height // 2
             canvas.create_image(flag_x, flag_y, anchor="center", image=flag_image)
-
         retry_button = tk.Button(canvas.master, text="Play Again", font=("Arial", 16), command=self.restart_game)
         canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
         print("Victory screen triggered")
-    
+
     def show_game_over(self):
         canvas.create_text(WIDTH // 2, HEIGHT // 2 - 40, text="Game Over", font=("Arial", 32), fill="red")
-
         retry_button = tk.Button(canvas.master, text="Try Again", font=("Arial", 16), command=self.restart_game)
         canvas.create_window(WIDTH // 2, HEIGHT // 2 + 20, window=retry_button)
-
         print("Game over triggered")
 
     def restart_game(self):
@@ -1082,7 +1114,6 @@ class Game:
                         self.show_game_over()
                     else:
                         self.update_hearts()
-
         if self.intro_done and all(enemy.is_dead for enemy in self.enemies) and self.enemies:
             if not self.victory_flag_shown:
                 self.victory_flag_shown = True
