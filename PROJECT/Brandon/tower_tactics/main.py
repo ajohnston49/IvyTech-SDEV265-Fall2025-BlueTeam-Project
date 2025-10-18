@@ -1,7 +1,8 @@
 import tkinter as tk
 import random
 import os
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(__file__)
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 import pygame
 pygame.mixer.init()
@@ -250,11 +251,9 @@ def restart_game():
     game.player = None  # Force player to be recreated
     game.load_level(game.current_level_index)
 
-flag_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\flag_white.png")
-print("Flag image loaded:", flag_image)
-cloud_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\cloud.png")
-# Load title image for intro screen
-title_image = tk.PhotoImage(file=r"C:\Users\ajpot\Documents\IVY TECH\IvyTech-SDEV265-Fall2025-BlueTeam-Project\PROJECT\Brandon\tower_tactics\assets\title.png")
+flag_image = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "flag_white.png"))
+cloud_image = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "cloud.png"))
+title_image = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "title.png"))
 
 class Player:
     def __init__(self, canvas, x, y, sounds=None):
